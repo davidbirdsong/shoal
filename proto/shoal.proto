@@ -1,0 +1,37 @@
+syntax = "proto3";
+package shoal.v1;
+option go_package = "github.com/davidbirdsong/shoal/pkg/proto";
+
+// Query: "announce"
+// Task → Sidecar. Task-initiated registration.
+// Node identity is available via q.SourceNode() — not included here.
+//
+// Query: "solicit"
+// Sidecar → Tasks. Sidecar requests all tasks re-announce themselves.
+// Tasks respond with AnnounceRequest (same payload, no separate message needed).
+message AnnounceRequest {
+  string addr  = 1; // private IP the task is bound on
+  uint32 port  = 2; // ephemeral port from getsockname()
+  string backend = 3; // "webservers" — the backend in haproxy
+  string state = 4; // "ready" — sidecar ignores non-ready announces
+}
+
+// Response to "announce" only. "solicit" responses are AnnounceRequest.
+message AnnounceResponse {
+  bool   accepted    = 1;
+  string backend_key = 2; // HAProxy server name assigned, e.g. "pool/task-abc123"
+  string reason      = 3; // populated when accepted=false
+}
+
+// Query: "depart"
+// Task → Sidecar. Signals graceful shutdown — sidecar removes backend before task exits.
+message DepartRequest {
+  string addr            = 1;
+  uint32 port            = 2;
+  uint32 timeout_seconds = 3; // how long the task will drain; 0 = immediate
+}
+
+message DepartResponse {
+  bool   accepted = 1;
+  string reason   = 2;
+}

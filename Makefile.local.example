@@ -1,0 +1,6 @@
+# Copy this file to Makefile.local and fill in your values.
+# Makefile.local is gitignored.
+
+AWS_REGION  := us-west-2
+AWS_PROFILE := your-aws-profile
+ECR_REPO    := 123456789.dkr.ecr.$(AWS_REGION).amazonaws.com/shoal

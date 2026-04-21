@@ -1,0 +1,33 @@
+services:
+  shoal:
+    build:
+      context: .
+    image: shoal:dev
+
+  proxy:
+    build:
+      context: deploy/haproxy
+      additional_contexts:
+        shoal: "target:shoal"
+    ports:
+      - "8080:80"
+    networks:
+      - shoal
+
+  task:
+    build:
+      context: deploy/task
+      additional_contexts:
+        shoal: "target:shoal"
+    command: >
+      shoal task
+        --join proxy:7946
+        --worker python3 /app/server.py
+    networks:
+      - shoal
+    depends_on:
+      - proxy
+
+networks:
+  shoal:
+    driver: bridge
