@@ -1,12 +1,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
-	"os/signal"
 	"syscall"
 	"time"
 
@@ -34,9 +32,9 @@ func init() {
 	f.StringArrayVar(&taskWorker, "worker", nil, "worker command and arguments")
 }
 
-func runTask(_ *cobra.Command, _ []string) error {
-	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
-		With().Timestamp().Str("role", "task").Logger()
+func runTask(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	log := zerolog.Ctx(ctx).With().Str("role", "task").Logger()
 
 	if taskJoin == "" {
 		return fmt.Errorf("--join is required")
@@ -102,12 +100,6 @@ func runTask(_ *cobra.Command, _ []string) error {
 
 	// ── Phase 2: READY ───────────────────────────────────────────────────────
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
 	announce := func() {
 		payload, err := shoalproto.MarshalAnnounceRequest(&shoalproto.AnnounceRequest{
 			Addr:  boundAddr.IP.String(),
@@ -164,10 +156,10 @@ func runTask(_ *cobra.Command, _ []string) error {
 	go func() { workerDone <- worker.Wait() }()
 
 	select {
-	case sig := <-sigs:
-		log.Info().Str("signal", sig.String()).Msg("received signal, draining")
+	case <-ctx.Done():
+		log.Err(ctx.Err()).Msg("received signal, draining")
 	case err := <-workerDone:
-		log.Info().Err(err).Msg("worker exited")
+		log.Err(err).Msg("worker exited")
 	}
 
 	// ── Phase 3: DRAINING ────────────────────────────────────────────────────
@@ -210,7 +202,7 @@ func runTask(_ *cobra.Command, _ []string) error {
 	}
 
 departed:
-	cancel()
+	// cancel()
 	<-runErr
 
 	if worker.ProcessState == nil {
