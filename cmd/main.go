@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -32,6 +33,14 @@ func init() {
 	rootCmd.AddCommand(sidecarCmd, taskCmd)
 }
 
+func getLogger() zerolog.Logger {
+	var logWriter io.Writer = os.Stderr
+	if fi, err := os.Stderr.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+		logWriter = zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
+	}
+	return zerolog.New(logWriter).With().Timestamp().Logger().Level(zerolog.DebugLevel)
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -43,10 +52,7 @@ func main() {
 		cancel()
 	}()
 
-	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
-		With().Timestamp().Str("role", "task").Logger()
-	ctx = log.WithContext(ctx)
-
+	ctx = getLogger().WithContext(ctx)
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
 	}
