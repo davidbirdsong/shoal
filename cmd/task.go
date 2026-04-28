@@ -153,6 +153,7 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	worker.Stdout = os.Stdout
 	worker.Stderr = os.Stderr
 	worker.ExtraFiles = bL.Files
+	worker.Env = os.Environ()
 	/*
 		worker.Env = append(os.Environ(),
 			fmt.Sprintf("SHOAL_PORT=%d", boundAddr.Port),
