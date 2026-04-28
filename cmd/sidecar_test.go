@@ -43,8 +43,9 @@ func nopZerolog() zerolog.Logger { return zerolog.Nop() }
 func newTestSidecar(h haproxyClient) *sidecar {
 	return &sidecar{
 		reg:     newRegistry(),
+		nodes:   newNodeCatalog(),
 		haproxy: h,
-		log:     zerolog.Nop(),
+		logger:  zerolog.Nop(),
 	}
 }
 

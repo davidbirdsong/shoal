@@ -1,6 +1,7 @@
 package child
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -9,17 +10,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func SubProcFromArgs(cmd *cobra.Command, args []string, shouldExec bool) error {
-	logger := zerolog.Ctx(cmd.Context())
-
+func ArgsFromCobra(cmd *cobra.Command, args []string) ([]string, error) {
 	dashAt := cmd.ArgsLenAtDash()
 	if dashAt >= 0 {
-
-		args = args[dashAt:]
-		logger.Debug().Str("exec", args[0]).
-			Str("args", strings.Join(args[0:], ",")).
-			Msg("execing into subprocess ")
-		exec.Command(args[0], args[1:]...)
+		src := args[dashAt:]
+		dst := make([]string, len(src))
+		copy(dst, src)
+		return dst, nil
 	}
-	return fmt.Errorf("command args passed in missing '--' cmd")
+	return []string{}, fmt.Errorf("No -- found on command line or nothing after")
+}
+
+func SubProcFromArgs(ctx context.Context, args []string) *exec.Cmd {
+	logger := zerolog.Ctx(ctx)
+
+	logger.Debug().Str("exec", args[0]).
+		Str("args", strings.Join(args[0:], ",")).
+		Msg("execing into subprocess ")
+	return exec.Command(args[0], args[1:]...)
 }

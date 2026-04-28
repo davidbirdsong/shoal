@@ -9,7 +9,7 @@ import (
 )
 
 func nopNode() *Node {
-	return &Node{log: zerolog.Nop()}
+	return &Node{logger: zerolog.Nop()}
 }
 
 // memberEvent constructs a serf.MemberEvent for the given type and node names.

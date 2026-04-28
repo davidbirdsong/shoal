@@ -41,7 +41,7 @@ type NodeConfig struct {
 // Node wraps a serf.Serf instance with its event channel.
 type Node struct {
 	Serf    *serf.Serf
-	log     zerolog.Logger
+	logger  zerolog.Logger
 	eventCh <-chan serf.Event
 }
 
@@ -94,7 +94,7 @@ func New(cfg NodeConfig) (*Node, error) {
 		}
 	}
 
-	return &Node{Serf: s, log: cfg.Logger, eventCh: eventCh}, nil
+	return &Node{Serf: s, logger: cfg.Logger, eventCh: eventCh}, nil
 }
 
 // EventHandlers is a dispatch table for serf events.
@@ -154,7 +154,7 @@ func (n *Node) dispatch(e serf.Event, h EventHandlers) {
 			return
 		}
 		if err := fn(q); err != nil {
-			n.log.Error().Err(err).Str("query", q.Name).Msg("query handler error")
+			n.logger.Error().Err(err).Str("query", q.Name).Msg("query handler error")
 		}
 	}
 }

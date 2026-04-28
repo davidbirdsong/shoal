@@ -116,6 +116,48 @@ type srvTarget struct {
 	key  string
 }
 
+type nodeCatalog struct {
+	mu    sync.Mutex
+	nodes map[string]serf.Member
+	seq   atomic.Int64
+}
+
+func newNodeCatalog() *nodeCatalog {
+	return &nodeCatalog{nodes: make(map[string]serf.Member)}
+}
+
+func (n *nodeCatalog) add(name string, m serf.Member) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.nodes[name] = m
+	return
+}
+
+func (n *nodeCatalog) remove(name string) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	_, ok := n.nodes[name]
+	if !ok {
+		return ok
+	}
+	delete(n.nodes, name)
+	return true
+}
+
+func (n *nodeCatalog) getMember(name string) serf.Member {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.nodes[name]
+}
+
+func (n *nodeCatalog) getIP(name string) string {
+	m := n.getMember(name)
+	if m.Name != name {
+		return "unknown"
+	}
+	return m.Addr.String()
+}
+
 type registry struct {
 	mu       sync.Mutex
 	backends map[string]srvTarget
@@ -152,16 +194,18 @@ func (r *registry) remove(nodeName string) (srvTarget, bool) {
 
 type sidecar struct {
 	reg     *registry
+	nodes   *nodeCatalog
 	haproxy haproxyClient
-	log     zerolog.Logger
+	logger  zerolog.Logger
 }
 
 func (s *sidecar) removeByNode(nodeName string) {
 	b, ok := s.reg.remove(nodeName)
+	_ = s.nodes.remove(nodeName)
 	if !ok {
 		return
 	}
-	logger := s.log.With().Str("backend", b.key).Str("node", nodeName).Logger()
+	logger := s.logger.With().Str("backend", b.key).Str("node", nodeName).Logger()
 	if err := s.haproxy.RemoveServer(b.key); err != nil {
 		logger.Err(err).Msg("remove server failed")
 	} else {
@@ -172,7 +216,7 @@ func (s *sidecar) removeByNode(nodeName string) {
 // handleAnnounce is called for both "announce" queries and "solicit" responses —
 // both carry an AnnounceRequest payload.
 func (s *sidecar) handleAnnounce(nodeName string, payload []byte) {
-	logger := s.log.With().Str("node", nodeName).Logger()
+	logger := s.logger.With().Str("node", nodeName).Logger()
 	req, err := shoalproto.UnmarshalAnnounceRequest(payload)
 	if err != nil {
 		logger.Err(err).Msg("announce: unmarshal failed")
@@ -182,9 +226,12 @@ func (s *sidecar) handleAnnounce(nodeName string, payload []byte) {
 		logger.Debug().Str("state", req.State).Msg("announce: ignoring non-ready node")
 		return
 	}
-	b := s.reg.add(nodeName, req.Addr, req.Port)
-	bl := logger.With().Str("backend", b.key).Str("addr", req.Addr).Uint32("port", req.Port).Logger()
-	if err := s.haproxy.AddServer(b.key, req.Addr, req.Port); err != nil {
+
+	addr := s.nodes.getIP(nodeName)
+	b := s.reg.add(nodeName, addr,
+		req.Port)
+	bl := logger.With().Str("backend", b.key).Str("addr", addr).Uint32("port", req.Port).Logger()
+	if err := s.haproxy.AddServer(b.key, addr, req.Port); err != nil {
 		bl.Err(err).Msg("announce: add server failed")
 	} else {
 		bl.Info().Msg("registered backend")
@@ -206,8 +253,9 @@ func (s *sidecar) onDepartQuery(q *serf.Query) error {
 	}
 	logPort := int(req.Port)
 	logTimeout := int(req.TimeoutSeconds)
+	addr := s.nodes.getIP(q.SourceNode())
 
-	s.log.Debug().Str("node", q.SourceNode()).Str("addr", req.Addr).Int("port", logPort).
+	s.logger.Debug().Str("node", q.SourceNode()).Str("addr", addr).Int("port", logPort).
 		Int("timeout", logTimeout).Msg("depart received")
 	s.removeByNode(q.SourceNode())
 	resp, _ := shoalproto.MarshalDepartResponse(&shoalproto.DepartResponse{Accepted: true})
@@ -215,10 +263,11 @@ func (s *sidecar) onDepartQuery(q *serf.Query) error {
 }
 
 func (s *sidecar) onMemberGone(members []serf.Member) {
-	logger := s.log.Info()
+	logger := s.logger.Info()
 	for _, m := range members {
 		logger.Str("node", m.Name).Msg("member gone")
 		s.removeByNode(m.Name)
+
 	}
 }
 
@@ -230,12 +279,12 @@ func (s *sidecar) solicit(ctx context.Context, n *node.Node) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.log.Debug().Msg("soliciting task announces")
+			s.logger.Debug().Msg("soliciting task announces")
 			resp, err := n.Serf.Query(cluster.QuerySolicit, nil, &serf.QueryParam{
 				FilterTags: map[string]string{cluster.TagKeyRole: cluster.RoleTask},
 			})
 			if err != nil {
-				s.log.Err(err).Msg("solicit query failed")
+				s.logger.Err(err).Msg("solicit query failed")
 				continue
 			}
 			for r := range resp.ResponseCh() {
@@ -245,8 +294,21 @@ func (s *sidecar) solicit(ctx context.Context, n *node.Node) {
 	}
 }
 
+func (s *sidecar) onMemberJoin(members []serf.Member) {
+	for _, m := range members {
+		s.logger.Debug().Str("member", m.Name).
+			Str("status", m.Status.String()).
+			Msg("member join event")
+
+		if m.Status != serf.StatusAlive {
+			s.nodes.remove(m.Name)
+		}
+	}
+}
+
 func (s *sidecar) handlers() node.EventHandlers {
 	return node.EventHandlers{
+		OnMemberJoin:   s.onMemberJoin,
 		OnMemberFailed: s.onMemberGone,
 		OnMemberLeave:  s.onMemberGone,
 		OnQuery: map[string]func(*serf.Query) error{
@@ -277,7 +339,7 @@ func init() {
 }
 
 func runSidecar(_ *cobra.Command, _ []string) error {
-	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
+	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
 		With().Timestamp().Str("role", "sidecar").Logger()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -285,19 +347,20 @@ func runSidecar(_ *cobra.Command, _ []string) error {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() { <-sigs; log.Info().Msg("shutting down"); cancel() }()
+	go func() { <-sigs; logger.Info().Msg("shutting down"); cancel() }()
 
 	s := &sidecar{
 		reg:     newRegistry(),
+		nodes:   newNodeCatalog(),
 		haproxy: &haproxySocketClient{socketPath: sidecarHAProxySocket, backend: sidecarHAProxyBackend},
-		log:     log,
+		logger:  logger,
 	}
 
 	n, err := node.New(node.NodeConfig{
 		Role:        cluster.RoleSidecar,
 		SnapshotDir: sidecarSnapshotDir,
 		JoinAddrs:   sidecarJoin,
-		Logger:      log,
+		Logger:      logger,
 	})
 	if err != nil {
 		return fmt.Errorf("create node: %w", err)

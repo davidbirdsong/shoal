@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/davidbirdsong/shoal/pkg/child"
 	"github.com/davidbirdsong/shoal/pkg/cluster"
 	"github.com/davidbirdsong/shoal/pkg/node"
 	shoalproto "github.com/davidbirdsong/shoal/pkg/proto"
@@ -22,25 +23,26 @@ import (
 
 // task flags
 var (
-	taskJoin         string
 	taskSnapshotDir  string
 	taskDrainTimeout time.Duration
 	taskWorker       []string
+
+	cmdVarJoinAddr []string
 )
 
 func init() {
 	f := taskCmd.Flags()
-	f.StringVar(&taskJoin, "join", "", "sidecar address to join (required)")
 	f.StringVar(&taskSnapshotDir, "snapshot-dir", "./serf-snapshots", "serf snapshot directory")
 	f.DurationVar(&taskDrainTimeout, "drain-timeout", 30*time.Second, "max time to drain before hard exit")
+	f.StringArrayVar(&cmdVarJoinAddr, "join", []string{""}, "specify join addresses")
 }
 
 // taskRunner holds live state across the three lifecycle phases.
 type taskRunner struct {
-	log          zerolog.Logger
-	boundAddr    *net.TCPAddr
+	logger       zerolog.Logger
 	worker       *exec.Cmd
 	node         *node.Node
+	port         int
 	drainTimeout time.Duration
 	nodeErr      <-chan error // result of n.Run goroutine; set in run, consumed in drain
 }
@@ -94,49 +96,85 @@ func validateFormat(tmpl string) error {
 	return nil
 }
 
-// startTask binds an ephemeral port, launches the worker subprocess, creates the serf
-// node, and advances it to the READY state.
-func startTask(_ context.Context, log zerolog.Logger) (*taskRunner, error) {
+type startConfig struct {
+	taskArgs []string
+	joinArgs []string
+}
+
+type boundListener struct {
+	Files []*os.File
+	Fd    int
+	Addr  *net.TCPAddr
+}
+
+func getListenerFiles(logger zerolog.Logger) (boundListener, error) {
+	var bL boundListener
 	ln, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
-		return nil, fmt.Errorf("bind ephemeral port: %w", err)
+		logger.Err(err).
+			Msg("failed to bind ephemeral port")
+		return bL, err
 	}
-	boundAddr := ln.Addr().(*net.TCPAddr)
-	log.Info().Int("port", boundAddr.Port).Msg("bound ephemeral port")
+
+	defer ln.Close()
+	bL.Addr = ln.Addr().(*net.TCPAddr)
+	logger.Debug().Int("port", bL.Addr.Port).Msg("bound ephemeral port")
 
 	// TODO: pass fd directly so worker can call accept() without knowing the port.
 	// For now the port is passed via env and the fd is available as fd 3.
 	lnFile, err := ln.(*net.TCPListener).File()
 	if err != nil {
-		return nil, fmt.Errorf("get listener fd: %w", err)
+		logger.Err(err).Msg("getting listener fd")
+		return bL, err
 	}
-	ln.Close()
+	bL.Files = []*os.File{lnFile}
+	bL.Fd = int(lnFile.Fd())
+	return bL, nil
+}
 
-	worker := exec.Command(taskWorker[0], taskWorker[1:]...)
+// startTask binds an ephemeral port, launches the worker subprocess, creates the serf
+// node, and advances it to the READY state.
+func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
+	logger := *zerolog.Ctx(ctx)
+
+	bL, err := getListenerFiles(logger)
+	if err != nil {
+		return nil, err
+	}
+
+	args, err := interPolate(cfg.taskArgs,
+		cmdLineInterp{fdport: bL.Fd}.applyFormat,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	worker := exec.Command(args[0], args[1:]...)
 	worker.Stdout = os.Stdout
 	worker.Stderr = os.Stderr
-	worker.ExtraFiles = []*os.File{lnFile} // fd 3
-	worker.Env = append(os.Environ(),
-		fmt.Sprintf("SHOAL_PORT=%d", boundAddr.Port),
-		fmt.Sprintf("SHOAL_ADDR=%s", boundAddr.IP),
-		"SHOAL_LISTENER_FD=3",
-	)
+	worker.ExtraFiles = bL.Files
+	/*
+		worker.Env = append(os.Environ(),
+			fmt.Sprintf("SHOAL_PORT=%d", boundAddr.Port),
+			fmt.Sprintf("SHOAL_ADDR=%s", boundAddr.IP),
+			"SHOAL_LISTENER_FD=3",
+		)
+	*/
 	if err := worker.Start(); err != nil {
 		return nil, fmt.Errorf("start worker: %w", err)
 	}
-	lnFile.Close()
-	log.Info().Int("pid", worker.Process.Pid).Msg("worker started")
+	logger.Info().Int("pid", worker.Process.Pid).Msg("worker started")
 
 	// TODO: replace with connect-probe loop or pipe-based ready signal.
 	time.Sleep(time.Second)
-	log.Info().Msg("worker assumed ready (stub)")
+	logger.Info().Msg("worker assumed ready (stub)")
 
 	n, err := node.New(node.NodeConfig{
 		Role:        cluster.RoleTask,
 		Tags:        map[string]string{cluster.TagKeyState: cluster.StateStarting},
 		SnapshotDir: taskSnapshotDir,
-		JoinAddrs:   []string{taskJoin},
-		Logger:      log,
+		JoinAddrs:   []string{"foo"},
+		Logger:      logger,
 	})
 	if err != nil {
 		worker.Process.Kill() //nolint:errcheck
@@ -151,10 +189,10 @@ func startTask(_ context.Context, log zerolog.Logger) (*taskRunner, error) {
 	}
 
 	return &taskRunner{
-		log:          log,
-		boundAddr:    boundAddr,
+		logger:       logger,
 		worker:       worker,
 		node:         n,
+		port:         bL.Addr.Port,
 		drainTimeout: taskDrainTimeout,
 	}, nil
 }
@@ -162,31 +200,30 @@ func startTask(_ context.Context, log zerolog.Logger) (*taskRunner, error) {
 // announce sends an AnnounceRequest to all sidecar nodes and logs their responses.
 func (t *taskRunner) announce() {
 	payload, err := shoalproto.MarshalAnnounceRequest(&shoalproto.AnnounceRequest{
-		Addr:  t.boundAddr.IP.String(),
-		Port:  uint32(t.boundAddr.Port),
+		Port:  uint32(t.port),
 		State: cluster.StateReady,
 	})
 	if err != nil {
-		t.log.Error().Err(err).Msg("announce: marshal failed")
+		t.logger.Error().Err(err).Msg("announce: marshal failed")
 		return
 	}
 	resp, err := t.node.Serf.Query(cluster.QueryAnnounce, payload, &serf.QueryParam{
 		FilterTags: map[string]string{cluster.TagKeyRole: cluster.RoleSidecar},
 	})
 	if err != nil {
-		t.log.Error().Err(err).Msg("announce: query failed")
+		t.logger.Error().Err(err).Msg("announce: query failed")
 		return
 	}
 	for r := range resp.ResponseCh() {
 		ack, err := shoalproto.UnmarshalAnnounceResponse(r.Payload)
 		if err != nil {
-			t.log.Error().Err(err).Str("from", r.From).Msg("announce: unmarshal response failed")
+			t.logger.Error().Err(err).Str("from", r.From).Msg("announce: unmarshal response failed")
 			continue
 		}
 		if ack.Accepted {
-			t.log.Info().Str("backend", ack.BackendKey).Msg("registered with sidecar")
+			t.logger.Info().Str("backend", ack.BackendKey).Msg("registered with sidecar")
 		} else {
-			t.log.Warn().Str("from", r.From).Str("reason", ack.Reason).Msg("announce rejected")
+			t.logger.Warn().Str("from", r.From).Str("reason", ack.Reason).Msg("announce rejected")
 		}
 	}
 }
@@ -194,8 +231,7 @@ func (t *taskRunner) announce() {
 // solicited responds to a QuerySolicit from a sidecar with our current announce payload.
 func (t *taskRunner) solicited(q *serf.Query) error {
 	payload, err := shoalproto.MarshalAnnounceRequest(&shoalproto.AnnounceRequest{
-		Addr:  t.boundAddr.IP.String(),
-		Port:  uint32(t.boundAddr.Port),
+		Port:  uint32(t.port),
 		State: cluster.StateReady,
 	})
 	if err != nil {
@@ -224,9 +260,9 @@ func (t *taskRunner) run(ctx context.Context) {
 
 	select {
 	case <-ctx.Done():
-		t.log.Err(ctx.Err()).Msg("received signal, draining")
+		t.logger.Err(ctx.Err()).Msg("received signal, draining")
 	case err := <-workerDone:
-		t.log.Err(err).Msg("worker exited")
+		t.logger.Err(err).Msg("worker exited")
 	}
 }
 
@@ -250,11 +286,11 @@ func (t *taskRunner) waitDepart(payload []byte) error {
 			}
 			ack, _ := shoalproto.UnmarshalDepartResponse(r.Payload)
 			if ack != nil && ack.Accepted {
-				t.log.Info().Str("from", r.From).Msg("sidecar acknowledged depart")
+				t.logger.Info().Str("from", r.From).Msg("sidecar acknowledged depart")
 				return nil
 			}
 		case <-timer.C:
-			t.log.Warn().Msg("drain timeout reached, forcing exit")
+			t.logger.Warn().Msg("drain timeout reached, forcing exit")
 			return nil
 		}
 	}
@@ -269,13 +305,12 @@ func (t *taskRunner) drain(_ context.Context) {
 	})
 
 	payload, _ := shoalproto.MarshalDepartRequest(&shoalproto.DepartRequest{
-		Addr:           t.boundAddr.IP.String(),
-		Port:           uint32(t.boundAddr.Port),
+		Port:           uint32(t.port),
 		TimeoutSeconds: uint32(t.drainTimeout.Seconds()),
 	})
 
 	if err := t.waitDepart(payload); err != nil {
-		t.log.Error().Err(err).Msg("depart query failed")
+		t.logger.Error().Err(err).Msg("depart query failed")
 	}
 
 	if t.worker.ProcessState == nil {
@@ -283,22 +318,25 @@ func (t *taskRunner) drain(_ context.Context) {
 	}
 
 	<-t.nodeErr
-	t.log.Info().Msg("clean shutdown complete")
+	t.logger.Info().Msg("clean shutdown complete")
 }
 
-func runTask(cmd *cobra.Command, _ []string) error {
+func runTask(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	log := zerolog.Ctx(ctx).With().Str("role", "task").Logger()
 
-	if taskJoin == "" {
-		return fmt.Errorf("--join is required")
-	}
-	if len(taskWorker) == 0 {
-		return fmt.Errorf("--worker is required")
-	}
-
-	t, err := startTask(ctx, log)
+	var err error
+	sc := startConfig{}
+	sc.taskArgs, err = child.ArgsFromCobra(cmd, args)
 	if err != nil {
+		log.Fatal().Err(err).Msg("failed extracing worker args")
+		return nil
+	}
+	sc.joinArgs = cmdVarJoinAddr
+
+	t, err := startTask(ctx, sc)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed starting task")
 		return err
 	}
 
