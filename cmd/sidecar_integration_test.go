@@ -97,12 +97,15 @@ func TestIntegration_RemoveServer(t *testing.T) {
 	socketPath, cleanup := haproxyContainer(t)
 	defer cleanup()
 
+	serverKey := "task-2"
+	backend := "webservers"
+
 	h := newTestClient(t, socketPath)
 
-	if err := h.AddServer("task-2", "127.0.0.1", 9002); err != nil {
+	if err := h.AddServer(backend, serverKey, "127.0.0.1", 9002); err != nil {
 		t.Fatalf("AddServer: %v", err)
 	}
-	if err := h.RemoveServer("task-2"); err != nil {
+	if err := h.RemoveServer(backend, serverKey); err != nil {
 		t.Fatalf("RemoveServer: %v", err)
 	}
 

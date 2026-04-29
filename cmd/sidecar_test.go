@@ -22,7 +22,7 @@ type mockHAProxy struct {
 	delErr  error
 }
 
-func (m *mockHAProxy) AddServer(key, addr string, port uint32, backend string) error {
+func (m *mockHAProxy) AddServer(backend, key, addr string, port uint32) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.added = append(m.added, key)

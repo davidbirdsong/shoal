@@ -1,16 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -23,174 +17,6 @@ import (
 )
 
 const gossipBasePort = 7946
-
-// ── HAProxy client ────────────────────────────────────────────────────────────
-
-// ServerState represents one server entry from HAProxy's runtime state.
-type ServerState struct {
-	Name    string
-	Addr    string
-	Port    uint32
-	OpState string // "2" = UP, "0" = DOWN/MAINT
-}
-
-// haproxyClient abstracts HAProxy runtime socket operations.
-type haproxyClient interface {
-	AddServer(key, addr string, port uint32, backend string) error
-	RemoveServer(key, backend string) error
-	ShowServers(backend string) ([]ServerState, error)
-}
-
-type haproxySocketClient struct {
-	socketPath string
-}
-
-// query sends a command and returns the full response.
-func (h *haproxySocketClient) query(cmd string) (string, error) {
-	conn, err := net.Dial("unix", h.socketPath)
-	if err != nil {
-		return "", fmt.Errorf("haproxy: dial %s: %w", h.socketPath, err)
-	}
-	defer conn.Close()
-	if _, err := fmt.Fprintf(conn, "%s\n", cmd); err != nil {
-		return "", err
-	}
-	var sb strings.Builder
-	if _, err := bufio.NewReader(conn).WriteTo(&sb); err != nil {
-		return "", err
-	}
-	return sb.String(), nil
-}
-
-// send sends a command and discards the response.
-func (h *haproxySocketClient) send(cmd string) error {
-	_, err := h.query(cmd)
-	return err
-}
-
-func (h *haproxySocketClient) AddServer(key, addr string, port uint32, backend string) error {
-	if err := h.send(fmt.Sprintf("add server %s/%s %s:%d", backend, key, addr, port)); err != nil {
-		return err
-	}
-	return h.send(fmt.Sprintf("set server %s/%s state ready", backend, key))
-}
-
-func (h *haproxySocketClient) RemoveServer(backend, key string) error {
-	return h.send(fmt.Sprintf("del server %s/%s", backend, key))
-}
-
-// ShowServers returns the current server list for the configured backend.
-// HAProxy's "show servers state <backend>" response columns (1-indexed):
-//
-//	1=be_id 2=be_name 3=srv_id 4=srv_name 5=srv_addr 6=srv_op_state ...  12=srv_port
-func (h *haproxySocketClient) ShowServers(backend string) ([]ServerState, error) {
-	out, err := h.query(fmt.Sprintf("show servers state %s", backend))
-	if err != nil {
-		return nil, err
-	}
-	var servers []ServerState
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 12 {
-			continue
-		}
-		port64, _ := strconv.ParseUint(fields[11], 10, 32)
-		servers = append(servers, ServerState{
-			Name:    fields[3],
-			Addr:    fields[4],
-			Port:    uint32(port64),
-			OpState: fields[5],
-		})
-	}
-	return servers, nil
-}
-
-// ── Backend registry ──────────────────────────────────────────────────────────
-
-type srvTarget struct {
-	addr    string
-	port    uint32
-	backend string
-	key     string
-}
-
-type nodeCatalog struct {
-	mu    sync.Mutex
-	nodes map[string]serf.Member
-	seq   atomic.Int64
-}
-
-func newNodeCatalog() *nodeCatalog {
-	return &nodeCatalog{nodes: make(map[string]serf.Member)}
-}
-
-func (n *nodeCatalog) add(name string, m serf.Member) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.nodes[name] = m
-	return
-}
-
-func (n *nodeCatalog) remove(name string) bool {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	_, ok := n.nodes[name]
-	if !ok {
-		return ok
-	}
-	delete(n.nodes, name)
-	return true
-}
-
-func (n *nodeCatalog) getMember(name string) serf.Member {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.nodes[name]
-}
-
-func (n *nodeCatalog) getIP(name string) string {
-	m := n.getMember(name)
-	if m.Name != name {
-		return "unknown"
-	}
-	return m.Addr.String()
-}
-
-type registry struct {
-	mu       sync.Mutex
-	backends map[string]srvTarget
-	seq      atomic.Int64
-}
-
-func newRegistry() *registry {
-	return &registry{backends: make(map[string]srvTarget)}
-}
-
-func (r *registry) nextKey() string {
-	return fmt.Sprintf("task-%d", r.seq.Add(1))
-}
-
-func (r *registry) add(nodeName, addr string, port uint32, backend string) srvTarget {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	b := srvTarget{addr: addr, port: port, backend: backend, key: r.nextKey()}
-	r.backends[nodeName] = b
-	return b
-}
-
-func (r *registry) remove(nodeName string) (srvTarget, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	b, ok := r.backends[nodeName]
-	if ok {
-		delete(r.backends, nodeName)
-	}
-	return b, ok
-}
 
 // ── Sidecar ───────────────────────────────────────────────────────────────────
 
@@ -230,10 +56,9 @@ func (s *sidecar) handleAnnounce(nodeName string, payload []byte) {
 	}
 
 	addr := s.nodes.getIP(nodeName)
-	b := s.reg.add(nodeName, addr,
-		req.Port, req.Backend)
+	b := s.reg.add(nodeName, addr, req.Port, req.Backend)
 	bl := logger.With().Str("backend", b.key).Str("addr", addr).Uint32("port", req.Port).Logger()
-	if err := s.haproxy.AddServer(b.key, addr, req.Port, req.Backend); err != nil {
+	if err := s.haproxy.AddServer(req.Backend, b.key, addr, req.Port); err != nil {
 		bl.Err(err).Msg("announce: add server failed")
 	} else {
 		bl.Info().Msg("registered backend")
@@ -253,12 +78,11 @@ func (s *sidecar) onDepartQuery(q *serf.Query) error {
 	if err != nil {
 		return fmt.Errorf("depart: unmarshal: %w", err)
 	}
-	logPort := int(req.Port)
-	logTimeout := int(req.TimeoutSeconds)
 	addr := s.nodes.getIP(q.SourceNode())
 
-	s.logger.Debug().Str("node", q.SourceNode()).Str("addr", addr).Int("port", logPort).
-		Int("timeout", logTimeout).Msg("depart received")
+	s.logger.Debug().Str("node", q.SourceNode()).Str("addr", addr).
+		Int("port", int(req.Port)).Int("timeout", int(req.TimeoutSeconds)).
+		Msg("depart received")
 	s.removeByNode(q.SourceNode())
 	resp, _ := shoalproto.MarshalDepartResponse(&shoalproto.DepartResponse{Accepted: true})
 	return q.Respond(resp)
@@ -269,7 +93,17 @@ func (s *sidecar) onMemberGone(members []serf.Member) {
 	for _, m := range members {
 		logger.Str("node", m.Name).Msg("member gone")
 		s.removeByNode(m.Name)
+	}
+}
 
+func (s *sidecar) onMemberJoin(members []serf.Member) {
+	for _, m := range members {
+		s.logger.Debug().Str("member", m.Name).
+			Str("status", m.Status.String()).
+			Msg("member join event")
+		if m.Status != serf.StatusAlive {
+			s.nodes.remove(m.Name)
+		}
 	}
 }
 
@@ -292,18 +126,6 @@ func (s *sidecar) solicit(ctx context.Context, n *node.Node) {
 			for r := range resp.ResponseCh() {
 				s.handleAnnounce(r.From, r.Payload)
 			}
-		}
-	}
-}
-
-func (s *sidecar) onMemberJoin(members []serf.Member) {
-	for _, m := range members {
-		s.logger.Debug().Str("member", m.Name).
-			Str("status", m.Status.String()).
-			Msg("member join event")
-
-		if m.Status != serf.StatusAlive {
-			s.nodes.remove(m.Name)
 		}
 	}
 }
