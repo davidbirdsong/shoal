@@ -364,7 +364,7 @@ func runTask(cmd *cobra.Command, args []string) error {
 		logger.Fatal().Err(err).Msg("failed extracing worker args")
 		return nil
 	}
-	sc.joinArgs = cmdVarJoinAddr
+	sc.joinArgs = ensurePort(cmdVarJoinAddr, fmt.Sprintf("%d", gossipBasePort))
 
 	t, err := startTask(ctx, sc)
 	if err != nil {
@@ -375,4 +375,16 @@ func runTask(cmd *cobra.Command, args []string) error {
 	t.run(ctx)
 	t.drain(ctx)
 	return nil
+}
+
+func ensurePort(addrs []string, defaultPort string) []string {
+	out := make([]string, len(addrs))
+	for i, a := range addrs {
+		if _, _, err := net.SplitHostPort(a); err != nil {
+			out[i] = net.JoinHostPort(a, defaultPort)
+		} else {
+			out[i] = a
+		}
+	}
+	return out
 }
