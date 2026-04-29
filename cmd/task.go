@@ -343,6 +343,7 @@ func makeNewNode(nCfg node.NodeConfig, logger zerolog.Logger) (*node.Node, error
 			l.Debug().Err(err).Msg("serf bind err")
 			continue
 		default:
+			l.Debug().Str("err_type", fmt.Sprintf("%T", err)).Err(err).Msg("node.New result")
 			return nil, fmt.Errorf("create node: %w", err)
 		}
 
