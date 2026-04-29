@@ -114,7 +114,6 @@ func (s *sidecar) solicit(ctx context.Context, n *node.Node) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.logger.Debug().Msg("soliciting task announces")
 			resp, err := n.Serf.Query(cluster.QuerySolicit, nil, &serf.QueryParam{
 				FilterTags: map[string]string{cluster.TagKeyRole: cluster.RoleTask},
 			})
@@ -171,11 +170,12 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 		haproxy: &haproxySocketClient{socketPath: sidecarHAProxySocket},
 		logger:  logger,
 	}
+	logger.Debug().Str("haproxy_sock", sidecarHAProxySocket).Msg("running haproxy sidecar")
 
 	n, err := node.New(node.NodeConfig{
 		Role:      cluster.RoleSidecar,
 		BindPort:  gossipBasePort,
-		JoinAddrs: sidecarJoin,
+		JoinAddrs: ensurePort(sidecarJoin, fmt.Sprintf("%d", gossipBasePort)),
 		Logger:    logger,
 	})
 	if err != nil {
@@ -196,19 +196,18 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 	logger.Debug().Strs("haproxy_cmd", args).Msg("starting haproxy")
 	worker := exec.Command(args[0], args[1:]...)
 	bgTail := pipeWorkers(worker, logger)
-
-	go s.solicit(ctx, n)
-	err = n.Run(ctx, s.handlers())
-	if err != nil {
-		logger.Fatal().Err(err)
-	}
-
 	if err := worker.Start(); err != nil {
 		logger.Fatal().Err(err).Msg("starting haproxy worker")
 		return nil
 	}
 	defer worker.Cancel()
 	bgTail()
+
+	go s.solicit(ctx, n)
+	err = n.Run(ctx, s.handlers())
+	if err != nil {
+		logger.Fatal().Err(err)
+	}
 
 	return nil
 }
