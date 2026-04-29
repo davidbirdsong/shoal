@@ -171,11 +171,10 @@ func runSidecar(cmd *cobra.Command, _ []string) error {
 	}
 
 	n, err := node.New(node.NodeConfig{
-		Role:        cluster.RoleSidecar,
-		BindPort:    gossipBasePort,
-		SnapshotDir: sidecarSnapshotDir,
-		JoinAddrs:   sidecarJoin,
-		Logger:      logger,
+		Role:      cluster.RoleSidecar,
+		BindPort:  gossipBasePort,
+		JoinAddrs: sidecarJoin,
+		Logger:    logger,
 	})
 	if err != nil {
 		return err

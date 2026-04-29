@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 
 	"github.com/davidbirdsong/shoal/pkg/cluster"
@@ -50,12 +49,15 @@ type Node struct {
 
 // New creates a serf node from cfg and optionally joins existing cluster members.
 func New(cfg NodeConfig) (*Node, error) {
-	if cfg.SnapshotDir == "" {
-		cfg.SnapshotDir = "./serf-snapshots"
-	}
-	if err := os.MkdirAll(cfg.SnapshotDir, 0o755); err != nil {
-		return nil, fmt.Errorf("node: create snapshot dir: %w", err)
-	}
+	//TODO: later fuuu
+	/*
+		if cfg.SnapshotDir == "" {
+			cfg.SnapshotDir = "./serf-snapshots"
+		}
+		if err := os.MkdirAll(cfg.SnapshotDir, 0o755); err != nil {
+			return nil, fmt.Errorf("node: create snapshot dir: %w", err)
+		}
+	*/
 
 	// serf and memberlist accept a stdlib *log.Logger; bridge via zerolog's io.Writer impl.
 	stdlog := log.New(cfg.Logger, "", 0)
