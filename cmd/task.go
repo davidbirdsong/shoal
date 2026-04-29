@@ -333,6 +333,8 @@ func isAddrInUse(err error) bool {
 func makeNewNode(nCfg node.NodeConfig, logger zerolog.Logger) (*node.Node, error) {
 	for i := gossipBasePort + 1; i < 8000; i++ {
 		l := logger.With().Int("serf_bind_port", i).Logger()
+
+		l.Debug().Msg("attempting node.New")
 		nCfg.BindPort = i
 		n, err := node.New(nCfg)
 		switch {
