@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"time"
 
+	"github.com/davidbirdsong/shoal/pkg/child"
 	"github.com/davidbirdsong/shoal/pkg/cluster"
 	"github.com/davidbirdsong/shoal/pkg/node"
 	shoalproto "github.com/davidbirdsong/shoal/pkg/proto"
@@ -159,7 +161,7 @@ func init() {
 		"interval between solicit queries to tasks")
 }
 
-func runSidecar(cmd *cobra.Command, _ []string) error {
+func runSidecar(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	logger := zerolog.Ctx(ctx).With().Str("role", "sidecar").Logger()
 
@@ -177,11 +179,36 @@ func runSidecar(cmd *cobra.Command, _ []string) error {
 		Logger:    logger,
 	})
 	if err != nil {
-		return err
+		logger.Fatal().Err(err)
+		return nil
 	}
 	m := n.Serf.Memberlist()
 	logger.Debug().Str("local_node", m.LocalNode().String()).Msg("node as seen by serf")
 
+	sc := startConfig{}
+	sc.taskArgs, err = child.ArgsFromCobra(cmd, args)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed extracing worker args")
+		return nil
+	}
+	sc.joinArgs = ensurePort(cmdVarJoinAddr, fmt.Sprintf("%d", gossipBasePort))
+
+	logger.Debug().Strs("haproxy_cmd", args).Msg("starting haproxy")
+	worker := exec.Command(args[0], args[1:]...)
+	bgTail := pipeWorkers(worker, logger)
+
 	go s.solicit(ctx, n)
-	return n.Run(ctx, s.handlers())
+	err = n.Run(ctx, s.handlers())
+	if err != nil {
+		logger.Fatal().Err(err)
+	}
+
+	if err := worker.Start(); err != nil {
+		logger.Fatal().Err(err).Msg("starting haproxy worker")
+		return nil
+	}
+	defer worker.Cancel()
+	bgTail()
+
+	return nil
 }

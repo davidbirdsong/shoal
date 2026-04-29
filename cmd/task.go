@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"net"
 	"os"
@@ -137,13 +135,6 @@ func getListenerFiles(logger zerolog.Logger) (boundListener, error) {
 	return bL, nil
 }
 
-func pipeToLog(r io.Reader, event func() *zerolog.Event) {
-	s := bufio.NewScanner(r)
-	for s.Scan() {
-		event().Msg(s.Text())
-	}
-}
-
 // startTask binds an ephemeral port, launches the worker subprocess, creates the serf
 // node, and advances it to the READY state.
 func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
@@ -162,9 +153,8 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	}
 
 	worker := exec.Command(args[0], args[1:]...)
+	bgTail := pipeWorkers(worker, logger)
 
-	stdout, _ := worker.StdoutPipe()
-	stderr, _ := worker.StderrPipe()
 	worker.ExtraFiles = bL.Files
 	worker.Env = os.Environ()
 	/*
@@ -177,9 +167,8 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	if err := worker.Start(); err != nil {
 		return nil, fmt.Errorf("start worker: %w", err)
 	}
+	bgTail()
 
-	go pipeToLog(stdout, logger.Info)
-	go pipeToLog(stderr, logger.Warn)
 	logger.Info().Int("pid", worker.Process.Pid).Msg("worker started")
 	mustHostname := func() string {
 		hostname, err := os.Hostname()
