@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -34,6 +35,7 @@ func init() {
 	f := taskCmd.Flags()
 	f.StringVar(&taskSnapshotDir, "snapshot-dir", "./serf-snapshots", "serf snapshot directory")
 	f.DurationVar(&taskDrainTimeout, "drain-timeout", 30*time.Second, "max time to drain before hard exit")
+	// TODO: check f.StringSliceVar and compare
 	f.StringArrayVar(&cmdVarJoinAddr, "join", []string{""}, "specify join addresses")
 }
 
@@ -169,14 +171,15 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	// TODO: replace with connect-probe loop or pipe-based ready signal.
 	time.Sleep(time.Second)
 	logger.Info().Msg("worker assumed ready (stub)")
-
-	n, err := node.New(node.NodeConfig{
+	nodeCfg := node.NodeConfig{
 		Role:        cluster.RoleTask,
 		Tags:        map[string]string{cluster.TagKeyState: cluster.StateStarting},
 		SnapshotDir: taskSnapshotDir,
 		JoinAddrs:   []string{"foo"},
 		Logger:      logger,
-	})
+	}
+
+	n, err := makeNewNode(nodeCfg, logger)
 	if err != nil {
 		worker.Process.Kill() //nolint:errcheck
 		return nil, fmt.Errorf("create node: %w", err)
@@ -320,6 +323,23 @@ func (t *taskRunner) drain(_ context.Context) {
 
 	<-t.nodeErr
 	t.logger.Info().Msg("clean shutdown complete")
+}
+
+func makeNewNode(nCfg node.NodeConfig, logger zerolog.Logger) (*node.Node, error) {
+	for i := gossipBasePort + 1; i < 8000; i++ {
+		nCfg.BindPort = i
+		n, err := node.New(nCfg)
+		switch {
+		case err == nil:
+			return n, nil
+		case errors.Is(err, syscall.EADDRINUSE):
+			continue
+		default:
+			return nil, fmt.Errorf("create node: %w", err)
+		}
+
+	}
+	return nil, fmt.Errorf("no spare ports open for gossip")
 }
 
 func runTask(cmd *cobra.Command, args []string) error {

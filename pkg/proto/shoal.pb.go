@@ -30,10 +30,9 @@ const (
 // Tasks respond with AnnounceRequest (same payload, no separate message needed).
 type AnnounceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Addr          string                 `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`       // private IP the task is bound on
-	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`      // ephemeral port from getsockname()
-	Backend       string                 `protobuf:"bytes,3,opt,name=backend,proto3" json:"backend,omitempty"` // "webservers" — the backend in haproxy
-	State         string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`     // "ready" — sidecar ignores non-ready announces
+	Port          uint32                 `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"`      // ephemeral port from getsockname()
+	Backend       string                 `protobuf:"bytes,2,opt,name=backend,proto3" json:"backend,omitempty"` // "webservers" —
+	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`     // "ready" — sidecar ignores non-ready announces
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -66,13 +65,6 @@ func (x *AnnounceRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AnnounceRequest.ProtoReflect.Descriptor instead.
 func (*AnnounceRequest) Descriptor() ([]byte, []int) {
 	return file_shoal_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *AnnounceRequest) GetAddr() string {
-	if x != nil {
-		return x.Addr
-	}
-	return ""
 }
 
 func (x *AnnounceRequest) GetPort() uint32 {
@@ -163,7 +155,8 @@ type DepartRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Addr           string                 `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`
 	Port           uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	TimeoutSeconds uint32                 `protobuf:"varint,3,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"` // how long the task will drain; 0 = immediate
+	Backend        string                 `protobuf:"bytes,3,opt,name=backend,proto3" json:"backend,omitempty"`
+	TimeoutSeconds uint32                 `protobuf:"varint,4,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"` // how long the task will drain; 0 = immediate
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -210,6 +203,13 @@ func (x *DepartRequest) GetPort() uint32 {
 		return x.Port
 	}
 	return 0
+}
+
+func (x *DepartRequest) GetBackend() string {
+	if x != nil {
+		return x.Backend
+	}
+	return ""
 }
 
 func (x *DepartRequest) GetTimeoutSeconds() uint32 {
@@ -275,21 +275,21 @@ var File_shoal_proto protoreflect.FileDescriptor
 
 const file_shoal_proto_rawDesc = "" +
 	"\n" +
-	"\vshoal.proto\x12\bshoal.v1\"i\n" +
+	"\vshoal.proto\x12\bshoal.v1\"U\n" +
 	"\x0fAnnounceRequest\x12\x12\n" +
-	"\x04addr\x18\x01 \x01(\tR\x04addr\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\x12\x18\n" +
-	"\abackend\x18\x03 \x01(\tR\abackend\x12\x14\n" +
-	"\x05state\x18\x04 \x01(\tR\x05state\"g\n" +
+	"\x04port\x18\x01 \x01(\rR\x04port\x12\x18\n" +
+	"\abackend\x18\x02 \x01(\tR\abackend\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\"g\n" +
 	"\x10AnnounceResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x1f\n" +
 	"\vbackend_key\x18\x02 \x01(\tR\n" +
 	"backendKey\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"`\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"z\n" +
 	"\rDepartRequest\x12\x12\n" +
 	"\x04addr\x18\x01 \x01(\tR\x04addr\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\x12'\n" +
-	"\x0ftimeout_seconds\x18\x03 \x01(\rR\x0etimeoutSeconds\"D\n" +
+	"\x04port\x18\x02 \x01(\rR\x04port\x12\x18\n" +
+	"\abackend\x18\x03 \x01(\tR\abackend\x12'\n" +
+	"\x0ftimeout_seconds\x18\x04 \x01(\rR\x0etimeoutSeconds\"D\n" +
 	"\x0eDepartResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reasonB*Z(github.com/davidbirdsong/shoal/pkg/protob\x06proto3"

@@ -34,6 +34,8 @@ type NodeConfig struct {
 	// Empty defaults to all interfaces.
 	BindAddr string
 
+	BindPort int
+
 	// Logger receives internal log output. Pass zerolog.Nop() to discard.
 	Logger zerolog.Logger
 }
@@ -62,6 +64,10 @@ func New(cfg NodeConfig) (*Node, error) {
 	if cfg.BindAddr != "" {
 		mlCfg.BindAddr = cfg.BindAddr
 	}
+	if cfg.BindPort > 0 {
+		mlCfg.BindPort = cfg.BindPort
+	}
+
 	mlCfg.ProtocolVersion = memberlist.ProtocolVersionMax
 
 	serfCfg := serf.DefaultConfig()

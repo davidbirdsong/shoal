@@ -22,6 +22,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const gossipBasePort = 7946
+
 // ── HAProxy client ────────────────────────────────────────────────────────────
 
 // ServerState represents one server entry from HAProxy's runtime state.
@@ -34,14 +36,13 @@ type ServerState struct {
 
 // haproxyClient abstracts HAProxy runtime socket operations.
 type haproxyClient interface {
-	AddServer(key, addr string, port uint32) error
-	RemoveServer(key string) error
-	ShowServers() ([]ServerState, error)
+	AddServer(key, addr string, port uint32, backend string) error
+	RemoveServer(key, backend string) error
+	ShowServers(backend string) ([]ServerState, error)
 }
 
 type haproxySocketClient struct {
 	socketPath string
-	backend    string
 }
 
 // query sends a command and returns the full response.
@@ -67,23 +68,23 @@ func (h *haproxySocketClient) send(cmd string) error {
 	return err
 }
 
-func (h *haproxySocketClient) AddServer(key, addr string, port uint32) error {
-	if err := h.send(fmt.Sprintf("add server %s/%s %s:%d", h.backend, key, addr, port)); err != nil {
+func (h *haproxySocketClient) AddServer(key, addr string, port uint32, backend string) error {
+	if err := h.send(fmt.Sprintf("add server %s/%s %s:%d", backend, key, addr, port)); err != nil {
 		return err
 	}
-	return h.send(fmt.Sprintf("set server %s/%s state ready", h.backend, key))
+	return h.send(fmt.Sprintf("set server %s/%s state ready", backend, key))
 }
 
-func (h *haproxySocketClient) RemoveServer(key string) error {
-	return h.send(fmt.Sprintf("del server %s/%s", h.backend, key))
+func (h *haproxySocketClient) RemoveServer(backend, key string) error {
+	return h.send(fmt.Sprintf("del server %s/%s", backend, key))
 }
 
 // ShowServers returns the current server list for the configured backend.
 // HAProxy's "show servers state <backend>" response columns (1-indexed):
 //
 //	1=be_id 2=be_name 3=srv_id 4=srv_name 5=srv_addr 6=srv_op_state ...  12=srv_port
-func (h *haproxySocketClient) ShowServers() ([]ServerState, error) {
-	out, err := h.query(fmt.Sprintf("show servers state %s", h.backend))
+func (h *haproxySocketClient) ShowServers(backend string) ([]ServerState, error) {
+	out, err := h.query(fmt.Sprintf("show servers state %s", backend))
 	if err != nil {
 		return nil, err
 	}
@@ -111,9 +112,10 @@ func (h *haproxySocketClient) ShowServers() ([]ServerState, error) {
 // ── Backend registry ──────────────────────────────────────────────────────────
 
 type srvTarget struct {
-	addr string
-	port uint32
-	key  string
+	addr    string
+	port    uint32
+	backend string
+	key     string
 }
 
 type nodeCatalog struct {
@@ -172,10 +174,10 @@ func (r *registry) nextKey() string {
 	return fmt.Sprintf("task-%d", r.seq.Add(1))
 }
 
-func (r *registry) add(nodeName, addr string, port uint32) srvTarget {
+func (r *registry) add(nodeName, addr string, port uint32, backend string) srvTarget {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	b := srvTarget{addr: addr, port: port, key: r.nextKey()}
+	b := srvTarget{addr: addr, port: port, backend: backend, key: r.nextKey()}
 	r.backends[nodeName] = b
 	return b
 }
@@ -206,7 +208,7 @@ func (s *sidecar) removeByNode(nodeName string) {
 		return
 	}
 	logger := s.logger.With().Str("backend", b.key).Str("node", nodeName).Logger()
-	if err := s.haproxy.RemoveServer(b.key); err != nil {
+	if err := s.haproxy.RemoveServer(b.backend, b.key); err != nil {
 		logger.Err(err).Msg("remove server failed")
 	} else {
 		logger.Info().Msg("removed backend")
@@ -229,9 +231,9 @@ func (s *sidecar) handleAnnounce(nodeName string, payload []byte) {
 
 	addr := s.nodes.getIP(nodeName)
 	b := s.reg.add(nodeName, addr,
-		req.Port)
+		req.Port, req.Backend)
 	bl := logger.With().Str("backend", b.key).Str("addr", addr).Uint32("port", req.Port).Logger()
-	if err := s.haproxy.AddServer(b.key, addr, req.Port); err != nil {
+	if err := s.haproxy.AddServer(b.key, addr, req.Port, req.Backend); err != nil {
 		bl.Err(err).Msg("announce: add server failed")
 	} else {
 		bl.Info().Msg("registered backend")
@@ -352,21 +354,21 @@ func runSidecar(_ *cobra.Command, _ []string) error {
 	s := &sidecar{
 		reg:     newRegistry(),
 		nodes:   newNodeCatalog(),
-		haproxy: &haproxySocketClient{socketPath: sidecarHAProxySocket, backend: sidecarHAProxyBackend},
+		haproxy: &haproxySocketClient{socketPath: sidecarHAProxySocket},
 		logger:  logger,
 	}
 
 	n, err := node.New(node.NodeConfig{
 		Role:        cluster.RoleSidecar,
+		BindPort:    gossipBasePort,
 		SnapshotDir: sidecarSnapshotDir,
 		JoinAddrs:   sidecarJoin,
 		Logger:      logger,
 	})
 	if err != nil {
-		return fmt.Errorf("create node: %w", err)
+		return err
 	}
 
 	go s.solicit(ctx, n)
-
 	return n.Run(ctx, s.handlers())
 }

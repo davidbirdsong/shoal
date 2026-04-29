@@ -10,10 +10,9 @@ option go_package = "github.com/davidbirdsong/shoal/pkg/proto";
 // Sidecar → Tasks. Sidecar requests all tasks re-announce themselves.
 // Tasks respond with AnnounceRequest (same payload, no separate message needed).
 message AnnounceRequest {
-  string addr  = 1; // private IP the task is bound on
-  uint32 port  = 2; // ephemeral port from getsockname()
-  string backend = 3; // "webservers" — the backend in haproxy
-  string state = 4; // "ready" — sidecar ignores non-ready announces
+  uint32 port  = 1; // ephemeral port from getsockname()
+  string backend = 2; // "webservers" — 
+  string state = 3; // "ready" — sidecar ignores non-ready announces
 }
 
 // Response to "announce" only. "solicit" responses are AnnounceRequest.
@@ -28,7 +27,8 @@ message AnnounceResponse {
 message DepartRequest {
   string addr            = 1;
   uint32 port            = 2;
-  uint32 timeout_seconds = 3; // how long the task will drain; 0 = immediate
+  string backend         = 3;
+  uint32 timeout_seconds = 4; // how long the task will drain; 0 = immediate
 }
 
 message DepartResponse {
