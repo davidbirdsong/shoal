@@ -175,7 +175,7 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 		Role:        cluster.RoleTask,
 		Tags:        map[string]string{cluster.TagKeyState: cluster.StateStarting},
 		SnapshotDir: taskSnapshotDir,
-		JoinAddrs:   []string{"foo"},
+		JoinAddrs:   cfg.joinArgs,
 		Logger:      logger,
 	}
 
