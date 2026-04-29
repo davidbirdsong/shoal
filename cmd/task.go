@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -180,11 +181,19 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	go pipeToLog(stdout, logger.Info)
 	go pipeToLog(stderr, logger.Warn)
 	logger.Info().Int("pid", worker.Process.Pid).Msg("worker started")
+	mustHostname := func() string {
+		hostname, err := os.Hostname()
+		if err != nil {
+			panic(err)
+		}
+		return hostname
+	}
 
 	// TODO: replace with connect-probe loop or pipe-based ready signal.
 	time.Sleep(time.Second)
 	logger.Info().Msg("worker assumed ready (stub)")
 	nodeCfg := node.NodeConfig{
+		NodeName:    fmt.Sprintf("%s-%x", mustHostname(), rand.Uint32()&0xfffff), // 5 hex chars
 		Role:        cluster.RoleTask,
 		Tags:        map[string]string{cluster.TagKeyState: cluster.StateStarting},
 		SnapshotDir: taskSnapshotDir,
@@ -338,30 +347,54 @@ func (t *taskRunner) drain(_ context.Context) {
 	t.logger.Info().Msg("clean shutdown complete")
 }
 
+func isRetryable(err error) bool {
+	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ETIMEDOUT) {
+		return true
+	}
+	s := err.Error()
+	return strings.Contains(s, syscall.ECONNREFUSED.Error()) ||
+		strings.Contains(s, syscall.ETIMEDOUT.Error()) ||
+		strings.Contains(s, "i/o timeout")
+}
+
 func isAddrInUse(err error) bool {
 	return errors.Is(err, syscall.EADDRINUSE) ||
 		strings.Contains(err.Error(), syscall.EADDRINUSE.Error())
 }
 
 func makeNewNode(nCfg node.NodeConfig, logger zerolog.Logger) (*node.Node, error) {
-	for i := gossipBasePort + 1; i < 8000; i++ {
-		l := logger.With().Int("serf_bind_port", i).Logger()
+	retryInterval := time.Second * 3
+	retryTimeout := time.Minute * 10
+	deadline := time.Now().Add(retryTimeout)
+	ticker := time.NewTicker(retryInterval)
+	defer ticker.Stop()
 
-		l.Debug().Msg("attempting node.New")
-		nCfg.BindPort = i
-		n, err := node.New(nCfg)
-		switch {
-		case err == nil:
-			l.Info().Msg("serf bind success")
-			return n, nil
-		case isAddrInUse(err):
-			l.Debug().Err(err).Msg("serf bind err")
-			continue
-		default:
-			l.Debug().Str("err_type", fmt.Sprintf("%T", err)).Err(err).Msg("node.New result")
-			return nil, fmt.Errorf("create node: %w", err)
+	for port := gossipBasePort + 1; port < 8000; port++ {
+		l := logger.With().Int("serf_bind_port", port).Logger()
+		nCfg.BindPort = port
+
+	retry:
+		for {
+			l.Debug().Msg("attempting node.New")
+			n, err := node.New(nCfg)
+			switch {
+			case err == nil:
+				l.Info().Msg("serf bind success")
+				return n, nil
+			case isAddrInUse(err):
+				l.Debug().Err(err).Msg("port in use, trying next")
+				break retry
+			case isRetryable(err):
+				if time.Now().After(deadline) {
+					return nil, fmt.Errorf("create node: %w", err)
+				}
+				l.Debug().Err(err).Msg("retryable, waiting")
+				<-ticker.C
+			default:
+				l.Debug().Str("err_type", fmt.Sprintf("%T", err)).Err(err).Msg("node .New result")
+				return nil, fmt.Errorf("create node: %w", err)
+			}
 		}
-
 	}
 	return nil, fmt.Errorf("no spare ports open for gossip")
 }

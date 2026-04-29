@@ -15,6 +15,7 @@ import (
 
 // NodeConfig configures a serf cluster node.
 type NodeConfig struct {
+	NodeName string
 	// Role is cluster.RoleSidecar or cluster.RoleTask. Required.
 	Role string
 
@@ -67,10 +68,12 @@ func New(cfg NodeConfig) (*Node, error) {
 	if cfg.BindPort > 0 {
 		mlCfg.BindPort = cfg.BindPort
 	}
+	mlCfg.Name = cfg.NodeName
 
 	mlCfg.ProtocolVersion = memberlist.ProtocolVersionMax
 
 	serfCfg := serf.DefaultConfig()
+	serfCfg.NodeName = cfg.NodeName
 	serfCfg.MemberlistConfig = mlCfg
 	serfCfg.Logger = stdlog
 

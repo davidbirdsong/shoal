@@ -180,6 +180,8 @@ func runSidecar(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	m := n.Serf.Memberlist()
+	logger.Debug().Str("local_node", m.LocalNode().String()).Msg("node as seen by serf")
 
 	go s.solicit(ctx, n)
 	return n.Run(ctx, s.handlers())
