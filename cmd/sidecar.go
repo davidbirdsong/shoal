@@ -3,9 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/davidbirdsong/shoal/pkg/cluster"
@@ -162,16 +159,9 @@ func init() {
 		"interval between solicit queries to tasks")
 }
 
-func runSidecar(_ *cobra.Command, _ []string) error {
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
-		With().Timestamp().Str("role", "sidecar").Logger()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() { <-sigs; logger.Info().Msg("shutting down"); cancel() }()
+func runSidecar(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	logger := zerolog.Ctx(ctx).With().Str("role", "sidecar").Logger()
 
 	s := &sidecar{
 		reg:     newRegistry(),

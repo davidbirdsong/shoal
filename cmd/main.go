@@ -46,13 +46,16 @@ func main() {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
+	l := getLogger()
 	go func() {
+		l.Warn().Msg("got signal shutting down")
+
 		<-sigs
 		cancel()
 	}()
 
-	ctx = getLogger().WithContext(ctx)
+	ctx = l.WithContext(ctx)
+
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
 	}

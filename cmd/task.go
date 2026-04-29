@@ -327,12 +327,15 @@ func (t *taskRunner) drain(_ context.Context) {
 
 func makeNewNode(nCfg node.NodeConfig, logger zerolog.Logger) (*node.Node, error) {
 	for i := gossipBasePort + 1; i < 8000; i++ {
+		l := logger.With().Int("serf_bind_port", i).Logger()
 		nCfg.BindPort = i
 		n, err := node.New(nCfg)
 		switch {
 		case err == nil:
+			l.Info().Msg("serf bind success")
 			return n, nil
 		case errors.Is(err, syscall.EADDRINUSE):
+			l.Debug().Err(err).Msg("serf bind err")
 			continue
 		default:
 			return nil, fmt.Errorf("create node: %w", err)
@@ -344,20 +347,20 @@ func makeNewNode(nCfg node.NodeConfig, logger zerolog.Logger) (*node.Node, error
 
 func runTask(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	log := zerolog.Ctx(ctx).With().Str("role", "task").Logger()
+	logger := zerolog.Ctx(ctx).With().Str("role", "task").Logger()
 
 	var err error
 	sc := startConfig{}
 	sc.taskArgs, err = child.ArgsFromCobra(cmd, args)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed extracing worker args")
+		logger.Fatal().Err(err).Msg("failed extracing worker args")
 		return nil
 	}
 	sc.joinArgs = cmdVarJoinAddr
 
 	t, err := startTask(ctx, sc)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed starting task")
+		logger.Fatal().Err(err).Msg("failed starting task")
 		return err
 	}
 
