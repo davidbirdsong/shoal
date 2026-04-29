@@ -325,6 +325,11 @@ func (t *taskRunner) drain(_ context.Context) {
 	t.logger.Info().Msg("clean shutdown complete")
 }
 
+func isAddrInUse(err error) bool {
+	return errors.Is(err, syscall.EADDRINUSE) ||
+		strings.Contains(err.Error(), syscall.EADDRINUSE.Error())
+}
+
 func makeNewNode(nCfg node.NodeConfig, logger zerolog.Logger) (*node.Node, error) {
 	for i := gossipBasePort + 1; i < 8000; i++ {
 		l := logger.With().Int("serf_bind_port", i).Logger()
@@ -334,7 +339,7 @@ func makeNewNode(nCfg node.NodeConfig, logger zerolog.Logger) (*node.Node, error
 		case err == nil:
 			l.Info().Msg("serf bind success")
 			return n, nil
-		case errors.Is(err, syscall.EADDRINUSE):
+		case isAddrInUse(err):
 			l.Debug().Err(err).Msg("serf bind err")
 			continue
 		default:
