@@ -186,10 +186,18 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	// TODO: replace with connect-probe loop or pipe-based ready signal.
 	time.Sleep(time.Second)
 	logger.Info().Msg("worker assumed ready (stub)")
+
+	advertiseAddr, err := ec2PrivateIP(ctx)
+	if err != nil {
+		logger.Warn().Err(err).Msg("could not fetch EC2 private IP; memberlist will choose advertise addr")
+	}
+
 	nodeCfg := node.NodeConfig{
-		NodeName: fmt.Sprintf("%s-%x", mustHostname(), rand.Uint32()&0xfffff), // 5 hex chars
-		Role:     cluster.RoleTask,
-		Tags:     map[string]string{cluster.TagKeyState: cluster.StateStarting},
+		NodeName:      fmt.Sprintf("%s-%x", mustHostname(), rand.Uint32()&0xfffff), // 5 hex chars
+		Role:          cluster.RoleTask,
+		Tags:          map[string]string{cluster.TagKeyState: cluster.StateStarting},
+		BindAddr:      "0.0.0.0",
+		AdvertiseAddr: advertiseAddr,
 		// SnapshotDir: taskSnapshotDir,
 		JoinAddrs: cfg.joinArgs,
 		Logger:    logger,

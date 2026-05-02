@@ -36,6 +36,11 @@ type NodeConfig struct {
 
 	BindPort int
 
+	// AdvertiseAddr is the address memberlist advertises to peers.
+	// Set this to the instance's private IP when binding on 0.0.0.0 to
+	// prevent memberlist from picking a loopback or docker0 address.
+	AdvertiseAddr string
+
 	// Logger receives internal log output. Pass zerolog.Nop() to discard.
 	Logger zerolog.Logger
 }
@@ -69,6 +74,9 @@ func New(cfg NodeConfig) (*Node, error) {
 	}
 	if cfg.BindPort > 0 {
 		mlCfg.BindPort = cfg.BindPort
+	}
+	if cfg.AdvertiseAddr != "" {
+		mlCfg.AdvertiseAddr = cfg.AdvertiseAddr
 	}
 	mlCfg.Name = cfg.NodeName
 
