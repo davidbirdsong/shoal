@@ -17,10 +17,6 @@ type srvTarget struct {
 	key     string
 }
 
-func (s srvTarget) hapString() string {
-	return s.backend + "/" + s.key
-}
-
 type registry struct {
 	mu       sync.Mutex
 	backends map[string]srvTarget

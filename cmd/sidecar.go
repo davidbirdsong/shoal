@@ -113,6 +113,10 @@ func (s *sidecar) onMemberJoin(members []serf.Member) {
 			Str("addr", m.Addr.String()).
 			Msg("member join event all members run through")
 		if m.Status == serf.StatusAlive {
+			if m.Addr == nil {
+				l.Warn().Msg("refusing to add nil addr member")
+				continue
+			}
 			s.nodes.add(m.Name, m)
 			if len(m.Addr.String()) == 0 {
 				l.Warn().Msg("member with empty addr string")
