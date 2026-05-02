@@ -20,6 +20,7 @@ type ServerState struct {
 type haproxyClient interface {
 	AddServer(backend, key, addr string, port uint32) error
 	RemoveServer(backend, key string) error
+	DrainServer(backend, key string) error
 	ShowServers(backend string) ([]ServerState, error)
 }
 
@@ -55,6 +56,10 @@ func (h *haproxySocketClient) AddServer(backend, key, addr string, port uint32) 
 		return err
 	}
 	return h.send(fmt.Sprintf("set server %s/%s state ready", backend, key))
+}
+
+func (h *haproxySocketClient) DrainServer(backend, key string) error {
+	return h.send(fmt.Sprintf("set server %s/%s state drain", backend, key))
 }
 
 func (h *haproxySocketClient) RemoveServer(backend, key string) error {

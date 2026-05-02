@@ -36,6 +36,12 @@ func (m *mockHAProxy) RemoveServer(backend, key string) error {
 	return m.delErr
 }
 
+func (m *mockHAProxy) DrainServer(backend, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.delErr
+}
+
 func (m *mockHAProxy) ShowServers(backend string) ([]ServerState, error) {
 	return nil, nil
 }

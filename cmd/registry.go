@@ -17,6 +17,10 @@ type srvTarget struct {
 	key     string
 }
 
+func (s srvTarget) hapString() string {
+	return s.backend + "/" + s.key
+}
+
 type registry struct {
 	mu       sync.Mutex
 	backends map[string]srvTarget
@@ -27,16 +31,23 @@ func newRegistry() *registry {
 	return &registry{backends: make(map[string]srvTarget)}
 }
 
-func (r *registry) nextKey() string {
-	return fmt.Sprintf("task-%d", r.seq.Add(1))
+func (r *registry) nextKey(b string) string {
+	return fmt.Sprintf("%s-%d", b, r.seq.Add(1))
 }
 
 func (r *registry) add(nodeName, addr string, port uint32, backend string) srvTarget {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	b := srvTarget{addr: addr, port: port, backend: backend, key: r.nextKey()}
+	b := srvTarget{addr: addr, port: port, backend: backend, key: r.nextKey(backend)}
 	r.backends[nodeName] = b
 	return b
+}
+
+func (r *registry) get(nodeName string) (srvTarget, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	b, ok := r.backends[nodeName]
+	return b, ok
 }
 
 func (r *registry) remove(nodeName string) (srvTarget, bool) {

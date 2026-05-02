@@ -26,6 +26,23 @@ type sidecar struct {
 	logger  zerolog.Logger
 }
 
+func (s *sidecar) drainByNode(nodeName string) {
+	b, ok := s.reg.get(nodeName)
+	if !ok {
+		s.logger.Debug().Str("nodeName", nodeName).Msg("leaving server not in registry")
+		return
+	}
+	logger := s.logger.With().Str("backend", b.backend).
+		Str("node_name", nodeName).Str("key", b.key).Logger()
+
+	if err := s.haproxy.DrainServer(b.backend, b.key); err != nil {
+		logger.Warn().Err(err).Msg("failed to set drain")
+		return
+	}
+	logger.Info().Msg("draining server")
+	return
+}
+
 func (s *sidecar) removeByNode(nodeName string) {
 	b, ok := s.reg.remove(nodeName)
 	_ = s.nodes.remove(nodeName)
@@ -56,8 +73,8 @@ func (s *sidecar) handleAnnounce(nodeName string, payload []byte) {
 
 	addr := s.nodes.getIP(nodeName)
 	b := s.reg.add(nodeName, addr, req.Port, req.Backend)
-	bl := logger.With().Str("backend", b.key).Str("addr", addr).Uint32("port", req.Port).Logger()
-	if err := s.haproxy.AddServer(req.Backend, b.key, addr, req.Port); err != nil {
+	bl := logger.With().Str("backend", b.backend).Str("addr", addr).Uint32("port", req.Port).Logger()
+	if err := s.haproxy.AddServer(b.backend, b.key, addr, req.Port); err != nil {
 		bl.Err(err).Msg("announce: add server failed")
 	} else {
 		bl.Info().Msg("registered backend")
@@ -87,6 +104,14 @@ func (s *sidecar) onDepartQuery(q *serf.Query) error {
 	return q.Respond(resp)
 }
 
+func (s *sidecar) onMemberLeaving(members []serf.Member) {
+	logger := s.logger.Info()
+	for _, m := range members {
+		logger.Str("node", m.Name).Msg("member leaving, set to drain")
+		s.drainByNode(m.Name)
+	}
+}
+
 func (s *sidecar) onMemberGone(members []serf.Member) {
 	logger := s.logger.Info()
 	for _, m := range members {
@@ -100,8 +125,8 @@ func (s *sidecar) onMemberJoin(members []serf.Member) {
 		s.logger.Debug().Str("member", m.Name).
 			Str("status", m.Status.String()).
 			Msg("member join event")
-		if m.Status != serf.StatusAlive {
-			s.nodes.remove(m.Name)
+		if m.Status == serf.StatusAlive {
+			s.nodes.add(m.Name, m)
 		}
 	}
 }
@@ -132,7 +157,7 @@ func (s *sidecar) handlers() node.EventHandlers {
 	return node.EventHandlers{
 		OnMemberJoin:   s.onMemberJoin,
 		OnMemberFailed: s.onMemberGone,
-		OnMemberLeave:  s.onMemberGone,
+		OnMemberLeave:  s.onMemberLeaving,
 		OnQuery: map[string]func(*serf.Query) error{
 			cluster.QueryAnnounce: s.onAnnounceQuery,
 			cluster.QueryDepart:   s.onDepartQuery,
