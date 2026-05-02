@@ -31,6 +31,7 @@ var (
 	taskBackend      string
 
 	cmdVarJoinAddr []string
+	cmdVarJoinSRV  string
 )
 
 func init() {
@@ -40,6 +41,7 @@ func init() {
 	// TODO: check f.StringSliceVar and compare
 	f.StringArrayVar(&cmdVarJoinAddr, "join", []string{""}, "specify join addresses")
 	f.StringVar(&taskBackend, "backend", "<none_backend>", "backend to register in haproxy")
+	f.StringVar(&cmdVarJoinSRV, "join-srv", "", "DNS SRV record to resolve for join addresses (e.g. _serf._tcp.example.com)")
 }
 
 // taskRunner holds live state across the three lifecycle phases.
@@ -374,6 +376,15 @@ func runTask(cmd *cobra.Command, args []string) error {
 		logger.Fatal().Err(err).Msg("failed extracing worker args")
 		return nil
 	}
+	if cmdVarJoinSRV != "" {
+		srvAddrs, err := srvJoinAddrs(cmdVarJoinSRV)
+		if err != nil {
+			logger.Fatal().Err(err).Str("srv", cmdVarJoinSRV).Msg("SRV lookup failed")
+			return nil
+		}
+		logger.Debug().Strs("addrs", srvAddrs).Str("srv", cmdVarJoinSRV).Msg("resolved SRV join addrs")
+		cmdVarJoinAddr = append(cmdVarJoinAddr, srvAddrs...)
+	}
 	sc.joinArgs = ensurePort(cmdVarJoinAddr, fmt.Sprintf("%d", gossipBasePort))
 
 	t, err := startTask(ctx, sc)
@@ -385,6 +396,21 @@ func runTask(cmd *cobra.Command, args []string) error {
 	t.run(ctx)
 	t.drain(ctx)
 	return nil
+}
+
+// srvJoinAddrs resolves a DNS SRV record and returns host:port strings.
+// Pass the full record name (e.g. "_serf._tcp.example.com"); service and
+// proto are left empty so net.LookupSRV uses the name as-is.
+func srvJoinAddrs(name string) ([]string, error) {
+	_, addrs, err := net.LookupSRV("", "", name)
+	if err != nil {
+		return nil, fmt.Errorf("SRV lookup %q: %w", name, err)
+	}
+	out := make([]string, len(addrs))
+	for i, a := range addrs {
+		out[i] = net.JoinHostPort(strings.TrimSuffix(a.Target, "."), fmt.Sprintf("%d", a.Port))
+	}
+	return out, nil
 }
 
 func ensurePort(addrs []string, defaultPort string) []string {

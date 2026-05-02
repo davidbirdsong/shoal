@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"path/filepath"
 
 	"github.com/davidbirdsong/shoal/pkg/cluster"
 	"github.com/hashicorp/memberlist"
@@ -96,7 +95,7 @@ func New(cfg NodeConfig) (*Node, error) {
 	}
 	serfCfg.Tags = tags
 
-	serfCfg.SnapshotPath = filepath.Join(cfg.SnapshotDir, serfCfg.NodeName)
+	// serfCfg.SnapshotPath = filepath.Join(cfg.SnapshotDir, serfCfg.NodeName)
 
 	eventCh := make(chan serf.Event, 64)
 	serfCfg.EventCh = eventCh
