@@ -225,14 +225,23 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 		logger.Fatal().Err(err).Msg("starting haproxy worker")
 		return nil
 	}
-	defer worker.Cancel()
 	bgTail()
+	defer func() {
+		if err := n.Serf.Leave(); err != nil {
+			logger.Warn().Err(err).Msg("on serf leave")
+		}
+
+		if err := worker.Cancel(); err != nil {
+			logger.Warn().Err(err).Msg("worker shutdown")
+		}
+		worker.Wait()
+	}()
 
 	go s.solicit(ctx, n)
 	err = n.Run(ctx, s.handlers())
 	if err != nil {
-		logger.Fatal().Err(err)
 	}
+	logger.Fatal().Err(err)
 
 	return nil
 }
