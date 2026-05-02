@@ -107,11 +107,16 @@ func (s *sidecar) onMemberGone(members []serf.Member) {
 
 func (s *sidecar) onMemberJoin(members []serf.Member) {
 	for _, m := range members {
-		s.logger.Debug().Str("member", m.Name).
+		l := s.logger.With().Str("member", m.Name).Logger()
+		l.Debug().
 			Str("status", m.Status.String()).
-			Msg("member join event")
+			Str("addr", m.Addr.String()).
+			Msg("member join event all members run through")
 		if m.Status == serf.StatusAlive {
 			s.nodes.add(m.Name, m)
+			if len(m.Addr.String()) == 0 {
+				l.Warn().Msg("member with empty addr string")
+			}
 		}
 	}
 }
