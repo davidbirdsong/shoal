@@ -185,7 +185,7 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 	m := n.Serf.Memberlist()
 	logger.Debug().Str("local_node", m.LocalNode().String()).Msg("node as seen by serf")
 
-	sc := startConfig{}
+	sc := startConfig{backend: taskBackend}
 	sc.taskArgs, err = child.ArgsFromCobra(cmd, args)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed extracing worker args")

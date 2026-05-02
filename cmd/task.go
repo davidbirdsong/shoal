@@ -28,6 +28,7 @@ var (
 	taskSnapshotDir  string
 	taskDrainTimeout time.Duration
 	taskWorker       []string
+	taskBackend      string
 
 	cmdVarJoinAddr []string
 )
@@ -38,6 +39,7 @@ func init() {
 	f.DurationVar(&taskDrainTimeout, "drain-timeout", 30*time.Second, "max time to drain before hard exit")
 	// TODO: check f.StringSliceVar and compare
 	f.StringArrayVar(&cmdVarJoinAddr, "join", []string{""}, "specify join addresses")
+	f.StringVar(&taskBackend, "backend", "<none_backend>", "backend to register in haproxy")
 }
 
 // taskRunner holds live state across the three lifecycle phases.
@@ -46,6 +48,7 @@ type taskRunner struct {
 	worker       *exec.Cmd
 	node         *node.Node
 	port         int
+	backend      string
 	drainTimeout time.Duration
 	nodeErr      <-chan error // result of n.Run goroutine; set in run, consumed in drain
 }
@@ -102,6 +105,7 @@ func validateFormat(tmpl string) error {
 type startConfig struct {
 	taskArgs []string
 	joinArgs []string
+	backend  string
 }
 
 type boundListener struct {
@@ -209,15 +213,18 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 		node:         n,
 		port:         bL.Addr.Port,
 		drainTimeout: taskDrainTimeout,
+		backend:      cfg.backend,
 	}, nil
 }
 
 // announce sends an AnnounceRequest to all sidecar nodes and logs their responses.
 func (t *taskRunner) announce() {
-	payload, err := shoalproto.MarshalAnnounceRequest(&shoalproto.AnnounceRequest{
-		Port:  uint32(t.port),
-		State: cluster.StateReady,
-	})
+	payload, err := shoalproto.MarshalAnnounceRequest(
+		&shoalproto.AnnounceRequest{
+			Port:    uint32(t.port),
+			State:   cluster.StateReady,
+			Backend: t.backend,
+		})
 	if err != nil {
 		t.logger.Error().Err(err).Msg("announce: marshal failed")
 		return
