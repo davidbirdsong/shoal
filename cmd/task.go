@@ -187,12 +187,12 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	time.Sleep(time.Second)
 	logger.Info().Msg("worker assumed ready (stub)")
 	nodeCfg := node.NodeConfig{
-		NodeName:    fmt.Sprintf("%s-%x", mustHostname(), rand.Uint32()&0xfffff), // 5 hex chars
-		Role:        cluster.RoleTask,
-		Tags:        map[string]string{cluster.TagKeyState: cluster.StateStarting},
-		SnapshotDir: taskSnapshotDir,
-		JoinAddrs:   cfg.joinArgs,
-		Logger:      logger,
+		NodeName: fmt.Sprintf("%s-%x", mustHostname(), rand.Uint32()&0xfffff), // 5 hex chars
+		Role:     cluster.RoleTask,
+		Tags:     map[string]string{cluster.TagKeyState: cluster.StateStarting},
+		// SnapshotDir: taskSnapshotDir,
+		JoinAddrs: cfg.joinArgs,
+		Logger:    logger,
 	}
 
 	n, err := makeNewNode(nodeCfg, logger)
