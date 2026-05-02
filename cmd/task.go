@@ -172,6 +172,7 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 		return nil, fmt.Errorf("start worker: %w", err)
 	}
 	bgTail()
+	defer worker.Wait()
 
 	logger.Info().Int("pid", worker.Process.Pid).Msg("worker started")
 	mustHostname := func() string {
@@ -243,7 +244,7 @@ func (t *taskRunner) announce() {
 			continue
 		}
 		if ack.Accepted {
-			t.logger.Info().Str("backend", ack.BackendKey).Msg("registered with sidecar")
+			t.logger.Info().Msg("registered with sidecar")
 		} else {
 			t.logger.Warn().Str("from", r.From).Str("reason", ack.Reason).Msg("announce rejected")
 		}
@@ -288,52 +289,11 @@ func (t *taskRunner) run(ctx context.Context) {
 	}
 }
 
-// waitDepart sends the depart query and waits for a sidecar ack or the drain timeout.
-func (t *taskRunner) waitDepart(payload []byte) error {
-	resp, err := t.node.Serf.Query(cluster.QueryDepart, payload, &serf.QueryParam{
-		FilterTags: map[string]string{cluster.TagKeyRole: cluster.RoleSidecar},
-	})
-	if err != nil {
-		return err
-	}
-
-	timer := time.NewTimer(t.drainTimeout)
-	defer timer.Stop()
-
-	for {
-		select {
-		case r, ok := <-resp.ResponseCh():
-			if !ok {
-				return nil
-			}
-			ack, _ := shoalproto.UnmarshalDepartResponse(r.Payload)
-			if ack != nil && ack.Accepted {
-				t.logger.Info().Str("from", r.From).Msg("sidecar acknowledged depart")
-				return nil
-			}
-		case <-timer.C:
-			t.logger.Warn().Msg("drain timeout reached, forcing exit")
-			return nil
-		}
-	}
-}
-
-// drain sets DRAINING state, sends the depart query, signals the worker, and waits
-// for the serf node to shut down.
+// drain tells the cluster we're leaving
+// and waits for graceful drain and kills worker
 func (t *taskRunner) drain(_ context.Context) {
-	t.node.Serf.SetTags(map[string]string{ //nolint:errcheck
-		cluster.TagKeyRole:  cluster.RoleTask,
-		cluster.TagKeyState: cluster.StateDraining,
-	})
-
-	payload, _ := shoalproto.MarshalDepartRequest(&shoalproto.DepartRequest{
-		Port:           uint32(t.port),
-		TimeoutSeconds: uint32(t.drainTimeout.Seconds()),
-	})
-
-	if err := t.waitDepart(payload); err != nil {
-		t.logger.Error().Err(err).Msg("depart query failed")
-	}
+	t.node.Serf.Leave()
+	time.Sleep(t.drainTimeout)
 
 	if t.worker.ProcessState == nil {
 		t.worker.Process.Signal(syscall.SIGTERM) //nolint:errcheck

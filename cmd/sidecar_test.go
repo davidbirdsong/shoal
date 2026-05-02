@@ -199,7 +199,7 @@ func TestHandleAnnounce_NonReady(t *testing.T) {
 	mock := &mockHAProxy{}
 	s := newTestSidecar(mock)
 
-	for _, state := range []string{cluster.StateStarting, cluster.StateDraining} {
+	for _, state := range []string{cluster.StateStarting} {
 		payload, _ := shoalproto.MarshalAnnounceRequest(&shoalproto.AnnounceRequest{
 			Port:    9000,
 			Backend: "webservers",

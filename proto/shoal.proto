@@ -18,20 +18,6 @@ message AnnounceRequest {
 // Response to "announce" only. "solicit" responses are AnnounceRequest.
 message AnnounceResponse {
   bool   accepted    = 1;
-  string backend_key = 2; // HAProxy server name assigned, e.g. "pool/task-abc123"
-  string reason      = 3; // populated when accepted=false
+  string reason      = 2; // populated when accepted=false
 }
 
-// Query: "depart"
-// Task → Sidecar. Signals graceful shutdown — sidecar removes backend before task exits.
-message DepartRequest {
-  string addr            = 1;
-  uint32 port            = 2;
-  string backend         = 3;
-  uint32 timeout_seconds = 4; // how long the task will drain; 0 = immediate
-}
-
-message DepartResponse {
-  bool   accepted = 1;
-  string reason   = 2;
-}

@@ -92,8 +92,7 @@ func (x *AnnounceRequest) GetState() string {
 type AnnounceResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
-	BackendKey    string                 `protobuf:"bytes,2,opt,name=backend_key,json=backendKey,proto3" json:"backend_key,omitempty"` // HAProxy server name assigned, e.g. "pool/task-abc123"
-	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`                           // populated when accepted=false
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // populated when accepted=false
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -135,136 +134,7 @@ func (x *AnnounceResponse) GetAccepted() bool {
 	return false
 }
 
-func (x *AnnounceResponse) GetBackendKey() string {
-	if x != nil {
-		return x.BackendKey
-	}
-	return ""
-}
-
 func (x *AnnounceResponse) GetReason() string {
-	if x != nil {
-		return x.Reason
-	}
-	return ""
-}
-
-// Query: "depart"
-// Task → Sidecar. Signals graceful shutdown — sidecar removes backend before task exits.
-type DepartRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Addr           string                 `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`
-	Port           uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	Backend        string                 `protobuf:"bytes,3,opt,name=backend,proto3" json:"backend,omitempty"`
-	TimeoutSeconds uint32                 `protobuf:"varint,4,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"` // how long the task will drain; 0 = immediate
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *DepartRequest) Reset() {
-	*x = DepartRequest{}
-	mi := &file_shoal_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DepartRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DepartRequest) ProtoMessage() {}
-
-func (x *DepartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_shoal_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DepartRequest.ProtoReflect.Descriptor instead.
-func (*DepartRequest) Descriptor() ([]byte, []int) {
-	return file_shoal_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *DepartRequest) GetAddr() string {
-	if x != nil {
-		return x.Addr
-	}
-	return ""
-}
-
-func (x *DepartRequest) GetPort() uint32 {
-	if x != nil {
-		return x.Port
-	}
-	return 0
-}
-
-func (x *DepartRequest) GetBackend() string {
-	if x != nil {
-		return x.Backend
-	}
-	return ""
-}
-
-func (x *DepartRequest) GetTimeoutSeconds() uint32 {
-	if x != nil {
-		return x.TimeoutSeconds
-	}
-	return 0
-}
-
-type DepartResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
-	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DepartResponse) Reset() {
-	*x = DepartResponse{}
-	mi := &file_shoal_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DepartResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DepartResponse) ProtoMessage() {}
-
-func (x *DepartResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_shoal_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DepartResponse.ProtoReflect.Descriptor instead.
-func (*DepartResponse) Descriptor() ([]byte, []int) {
-	return file_shoal_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *DepartResponse) GetAccepted() bool {
-	if x != nil {
-		return x.Accepted
-	}
-	return false
-}
-
-func (x *DepartResponse) GetReason() string {
 	if x != nil {
 		return x.Reason
 	}
@@ -279,18 +149,8 @@ const file_shoal_proto_rawDesc = "" +
 	"\x0fAnnounceRequest\x12\x12\n" +
 	"\x04port\x18\x01 \x01(\rR\x04port\x12\x18\n" +
 	"\abackend\x18\x02 \x01(\tR\abackend\x12\x14\n" +
-	"\x05state\x18\x03 \x01(\tR\x05state\"g\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\"F\n" +
 	"\x10AnnounceResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x1f\n" +
-	"\vbackend_key\x18\x02 \x01(\tR\n" +
-	"backendKey\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"z\n" +
-	"\rDepartRequest\x12\x12\n" +
-	"\x04addr\x18\x01 \x01(\tR\x04addr\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\x12\x18\n" +
-	"\abackend\x18\x03 \x01(\tR\abackend\x12'\n" +
-	"\x0ftimeout_seconds\x18\x04 \x01(\rR\x0etimeoutSeconds\"D\n" +
-	"\x0eDepartResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reasonB*Z(github.com/davidbirdsong/shoal/pkg/protob\x06proto3"
 
@@ -306,12 +166,10 @@ func file_shoal_proto_rawDescGZIP() []byte {
 	return file_shoal_proto_rawDescData
 }
 
-var file_shoal_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_shoal_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_shoal_proto_goTypes = []any{
 	(*AnnounceRequest)(nil),  // 0: shoal.v1.AnnounceRequest
 	(*AnnounceResponse)(nil), // 1: shoal.v1.AnnounceResponse
-	(*DepartRequest)(nil),    // 2: shoal.v1.DepartRequest
-	(*DepartResponse)(nil),   // 3: shoal.v1.DepartResponse
 }
 var file_shoal_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -332,7 +190,7 @@ func file_shoal_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_shoal_proto_rawDesc), len(file_shoal_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

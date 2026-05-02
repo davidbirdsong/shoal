@@ -89,21 +89,6 @@ func (s *sidecar) onAnnounceQuery(q *serf.Query) error {
 	return q.Respond(resp)
 }
 
-func (s *sidecar) onDepartQuery(q *serf.Query) error {
-	req, err := shoalproto.UnmarshalDepartRequest(q.Payload)
-	if err != nil {
-		return fmt.Errorf("depart: unmarshal: %w", err)
-	}
-	addr := s.nodes.getIP(q.SourceNode())
-
-	s.logger.Debug().Str("node", q.SourceNode()).Str("addr", addr).
-		Int("port", int(req.Port)).Int("timeout", int(req.TimeoutSeconds)).
-		Msg("depart received")
-	s.removeByNode(q.SourceNode())
-	resp, _ := shoalproto.MarshalDepartResponse(&shoalproto.DepartResponse{Accepted: true})
-	return q.Respond(resp)
-}
-
 func (s *sidecar) onMemberLeaving(members []serf.Member) {
 	logger := s.logger.Info()
 	for _, m := range members {
@@ -160,7 +145,6 @@ func (s *sidecar) handlers() node.EventHandlers {
 		OnMemberLeave:  s.onMemberLeaving,
 		OnQuery: map[string]func(*serf.Query) error{
 			cluster.QueryAnnounce: s.onAnnounceQuery,
-			cluster.QueryDepart:   s.onDepartQuery,
 		},
 	}
 }
