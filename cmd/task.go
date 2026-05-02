@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -108,6 +107,7 @@ type startConfig struct {
 	taskArgs []string
 	joinArgs []string
 	backend  string
+	nodename string
 }
 
 type boundListener struct {
@@ -177,13 +177,6 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	defer worker.Wait()
 
 	logger.Info().Int("pid", worker.Process.Pid).Msg("worker started")
-	mustHostname := func() string {
-		hostname, err := os.Hostname()
-		if err != nil {
-			panic(err)
-		}
-		return hostname
-	}
 
 	// TODO: replace with connect-probe loop or pipe-based ready signal.
 	time.Sleep(time.Second)
@@ -195,7 +188,7 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	}
 
 	nodeCfg := node.NodeConfig{
-		NodeName:      fmt.Sprintf("%s-%x", mustHostname(), rand.Uint32()&0xfffff), // 5 hex chars
+		NodeName:      cfg.nodename,
 		Role:          cluster.RoleTask,
 		Tags:          map[string]string{cluster.TagKeyState: cluster.StateStarting},
 		BindAddr:      "0.0.0.0",

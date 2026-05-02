@@ -187,6 +187,7 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 	}
 
 	n, err := node.New(node.NodeConfig{
+		NodeName:      nodeName,
 		Role:          cluster.RoleSidecar,
 		BindAddr:      "0.0.0.0",
 		AdvertiseAddr: advertiseAddr,
@@ -201,7 +202,10 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 	m := n.Serf.Memberlist()
 	logger.Debug().Str("local_node", m.LocalNode().String()).Msg("node as seen by serf")
 
-	sc := startConfig{backend: taskBackend}
+	sc := startConfig{
+		nodename: nodeName,
+		backend:  taskBackend,
+	}
 	sc.taskArgs, err = child.ArgsFromCobra(cmd, args)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed extracing worker args")

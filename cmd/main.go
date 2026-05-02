@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,20 +36,35 @@ func init() {
 	rootCmd.AddCommand(sidecarCmd, taskCmd)
 }
 
-func getLogger() zerolog.Logger {
+func getLogger(nodeName string) zerolog.Logger {
 	var logWriter io.Writer = os.Stderr
 	if fi, err := os.Stderr.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
 		logWriter = zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
 	}
-	return zerolog.New(logWriter).With().Timestamp().Logger().Level(zerolog.DebugLevel)
+	return zerolog.New(logWriter).With().Timestamp().Str("node", nodeName).
+		Logger().Level(zerolog.DebugLevel)
 }
+
+func mustHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		panic(err)
+	}
+
+	s := strings.TrimPrefix(hostname, "ip-")
+	s, _, _ = strings.Cut(s, ".")
+	return "node-" + s
+}
+
+var nodeName = fmt.Sprintf("%s-%x", mustHostname(), rand.Uint32()&0xfffff)
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	l := getLogger()
+	l := getLogger(nodeName).With().Logger()
+
 	go func() {
 		l.Warn().Msg("got signal shutting down")
 
