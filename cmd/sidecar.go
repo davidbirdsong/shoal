@@ -181,19 +181,19 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 	}
 	logger.Debug().Str("haproxy_sock", sidecarHAProxySocket).Msg("running haproxy sidecar")
 
-	advertiseAddr, err := ec2PrivateIP(ctx)
+	bindAddr, err := ec2PrivateIP(ctx)
 	if err != nil {
 		logger.Warn().Err(err).Msg("could not fetch EC2 private IP; memberlist will choose advertise addr")
 	}
 
 	n, err := node.New(node.NodeConfig{
-		NodeName:      nodeName,
-		Role:          cluster.RoleSidecar,
-		BindAddr:      "0.0.0.0",
-		AdvertiseAddr: advertiseAddr,
-		BindPort:      gossipBasePort,
-		JoinAddrs:     ensurePort(sidecarJoin, fmt.Sprintf("%d", gossipBasePort)),
-		Logger:        logger,
+		NodeName: nodeName,
+		Role:     cluster.RoleSidecar,
+		// AdvertiseAddr: advertiseAddr,
+		BindAddr:  bindAddr,
+		BindPort:  gossipBasePort,
+		JoinAddrs: ensurePort(sidecarJoin, fmt.Sprintf("%d", gossipBasePort)),
+		Logger:    logger,
 	})
 	if err != nil {
 		logger.Fatal().Err(err)
