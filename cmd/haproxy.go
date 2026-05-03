@@ -6,6 +6,8 @@ import (
 	"net"
 	"strconv"
 	"strings"
+
+	"github.com/rs/zerolog"
 )
 
 // ServerState represents one server entry from HAProxy's runtime state.
@@ -26,6 +28,7 @@ type haproxyClient interface {
 
 type haproxySocketClient struct {
 	socketPath string
+	logger     zerolog.Logger
 }
 
 // query sends a command and returns the full response.
@@ -47,7 +50,9 @@ func (h *haproxySocketClient) query(cmd string) (string, error) {
 
 // send sends a command and discards the response.
 func (h *haproxySocketClient) send(cmd string) error {
-	_, err := h.query(cmd)
+	h.logger.Debug().Str("haproxy", "send").Msg(cmd)
+	out, err := h.query(cmd)
+	h.logger.Debug().Str("haproxy", "recv").Msg(out)
 	return err
 }
 

@@ -204,7 +204,7 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 	s := &sidecar{
 		reg:     newRegistry(),
 		nodes:   newNodeCatalog(),
-		haproxy: &haproxySocketClient{socketPath: sidecarHAProxySocket},
+		haproxy: &haproxySocketClient{socketPath: sidecarHAProxySocket, logger: logger},
 		logger:  logger,
 	}
 	logger.Debug().Str("haproxy_sock", sidecarHAProxySocket).Msg("running haproxy sidecar")
