@@ -85,16 +85,9 @@ func (n *nodeCatalog) remove(name string) bool {
 	return true
 }
 
-func (n *nodeCatalog) getMember(name string) serf.Member {
+func (n *nodeCatalog) getMember(name string) (serf.Member, bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	return n.nodes[name]
-}
-
-func (n *nodeCatalog) getIP(name string) string {
-	m := n.getMember(name)
-	if m.Name != name {
-		return "unknown"
-	}
-	return m.Addr.String()
+	m, ok := n.nodes[name]
+	return m, ok
 }

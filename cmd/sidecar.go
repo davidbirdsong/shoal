@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"os/exec"
 	"time"
 
@@ -61,10 +62,14 @@ func (s *sidecar) removeByNode(nodeName string) {
 	}
 }
 
+func unusableIP(i net.IP) bool {
+	return len(i) == 0 || i.IsUnspecified()
+}
+
 // handleAnnounce is called for both "announce" queries and "solicit" responses —
 // both carry an AnnounceRequest payload.
 func (s *sidecar) handleAnnounce(nodeName string, payload []byte) {
-	logger := s.logger.With().Str("node", nodeName).Logger()
+	logger := s.logger.With().Str("announce_node", nodeName).Logger()
 	req, err := shoalproto.UnmarshalAnnounceRequest(payload)
 	if err != nil {
 		logger.Err(err).Msg("announce: unmarshal failed")
@@ -74,8 +79,16 @@ func (s *sidecar) handleAnnounce(nodeName string, payload []byte) {
 		logger.Debug().Str("state", req.State).Msg("announce: ignoring non-ready node")
 		return
 	}
+	m, ok := s.nodes.getMember(nodeName)
+	if !ok {
+		logger.Warn().Msg("announce before join")
+		return
+	}
+	if unusableIP(m.Addr) {
+		logger.Warn().Msg("announce has unusable IP")
+	}
 
-	addr := s.nodes.getIP(nodeName)
+	addr := m.Addr.String()
 	b := s.reg.add(nodeName, addr, req.Port, req.Backend)
 	bl := logger.With().Str("backend", b.backend).Str("addr", addr).Uint32("port", req.Port).Logger()
 	if err := s.haproxy.AddServer(b.backend, b.key, addr, req.Port); err != nil {
