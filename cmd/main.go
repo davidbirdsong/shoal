@@ -56,14 +56,14 @@ func mustHostname() string {
 	return "node-" + s
 }
 
-var nodeName = fmt.Sprintf("%s-%x", mustHostname(), rand.Uint32()&0xfffff)
+var nodeNameGlobal = fmt.Sprintf("%s-%x", mustHostname(), rand.Uint32()&0xfffff)
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	l := getLogger(nodeName).With().Logger()
+	l := getLogger(nodeNameGlobal).With().Logger()
 
 	go func() {
 		<-sigs

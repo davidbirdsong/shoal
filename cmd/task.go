@@ -196,6 +196,9 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 		JoinAddrs: cfg.joinArgs,
 		Logger:    logger,
 	}
+	if len(nodeCfg.NodeName) == 0 {
+		return nil, fmt.Errorf("unset Nodename")
+	}
 
 	n, err := makeNewNode(nodeCfg, logger)
 	if err != nil {
@@ -364,8 +367,11 @@ func runTask(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	logger := zerolog.Ctx(ctx).With().Str("role", "task").Logger()
 
-	var err error
-	sc := startConfig{}
+	var (
+		err error
+		sc  = startConfig{nodename: nodeNameGlobal}
+	)
+
 	sc.taskArgs, err = child.ArgsFromCobra(cmd, args)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed extracing worker args")
