@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/davidbirdsong/shoal/pkg/child"
 	"github.com/davidbirdsong/shoal/pkg/cluster"
 	"github.com/davidbirdsong/shoal/pkg/node"
 	shoalproto "github.com/davidbirdsong/shoal/pkg/proto"
@@ -152,9 +151,10 @@ func (s *sidecar) solicit(ctx context.Context, n *node.Node) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			resp, err := n.Serf.Query(cluster.QuerySolicit, nil, &serf.QueryParam{
-				FilterTags: map[string]string{cluster.TagKeyRole: cluster.RoleTask},
-			})
+			resp, err := n.Serf.Query(
+				cluster.QuerySolicit, nil, &serf.QueryParam{
+					FilterTags: map[string]string{cluster.TagKeyRole: cluster.RoleTask},
+				})
 			if err != nil {
 				s.logger.Err(err).Msg("solicit query failed")
 				continue
@@ -215,7 +215,7 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 	}
 
 	n, err := node.New(node.NodeConfig{
-		NodeName: nodeName,
+		NodeName: nodeNameGlobal,
 		Role:     cluster.RoleSidecar,
 		// AdvertiseAddr: advertiseAddr,
 		BindAddr:  bindAddr,
@@ -230,17 +230,11 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 	m := n.Serf.Memberlist()
 	logger.Debug().Str("local_node", m.LocalNode().String()).Msg("node as seen by serf")
 
-	sc := startConfig{
-		nodename: nodeName,
-		backend:  taskBackend,
-	}
-	sc.taskArgs, err = child.ArgsFromCobra(cmd, args)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed extracing worker args")
 		return nil
-	}
-	sc.joinArgs = ensurePort(cmdVarJoinAddr, fmt.Sprintf("%d", gossipBasePort))
 
+	}
 	logger.Debug().Strs("haproxy_cmd", args).Msg("starting haproxy")
 	worker := exec.Command(args[0], args[1:]...)
 	bgTail := pipeWorkers(worker, logger)
@@ -253,6 +247,7 @@ func runSidecar(cmd *cobra.Command, args []string) error {
 		if err := n.Serf.Leave(); err != nil {
 			logger.Warn().Err(err).Msg("on serf leave")
 		}
+		time.Sleep(1)
 
 		if err := worker.Cancel(); err != nil {
 			logger.Warn().Err(err).Msg("worker shutdown")

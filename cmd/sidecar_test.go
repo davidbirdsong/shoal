@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"sync"
 	"testing"
 
@@ -53,6 +54,12 @@ func newTestSidecar(h haproxyClient) *sidecar {
 		haproxy: h,
 		logger:  zerolog.Nop(),
 	}
+}
+
+// seedNode adds a member to the sidecar's node catalog so that handleAnnounce
+// passes the catalog gate. addr must be a valid non-zero IPv4 address.
+func seedNode(s *sidecar, name, addr string) {
+	s.nodes.add(name, serf.Member{Name: name, Addr: net.ParseIP(addr)})
 }
 
 // ── Registry tests ────────────────────────────────────────────────────────────
@@ -187,6 +194,7 @@ func announcePayload(t *testing.T, port uint32, backend string) []byte {
 func TestHandleAnnounce_Ready(t *testing.T) {
 	mock := &mockHAProxy{}
 	s := newTestSidecar(mock)
+	seedNode(s, "task-node-1", "10.0.0.1")
 
 	s.handleAnnounce("task-node-1", announcePayload(t, 9000, "webservers"))
 
@@ -223,6 +231,7 @@ func TestHandleAnnounce_InvalidPayload(t *testing.T) {
 func TestRemoveByNode_Registered(t *testing.T) {
 	mock := &mockHAProxy{}
 	s := newTestSidecar(mock)
+	seedNode(s, "task-node-1", "10.0.0.1")
 
 	s.handleAnnounce("task-node-1", announcePayload(t, 9000, "webservers"))
 	s.removeByNode("task-node-1")
@@ -245,6 +254,7 @@ func TestOnMemberGone(t *testing.T) {
 	s := newTestSidecar(mock)
 
 	for _, name := range []string{"a", "b"} {
+		seedNode(s, name, "10.0.0.1")
 		s.handleAnnounce(name, announcePayload(t, 9000, "webservers"))
 	}
 
@@ -259,6 +269,7 @@ func TestDuplicateAnnounce(t *testing.T) {
 	mock := &mockHAProxy{}
 	s := newTestSidecar(mock)
 
+	seedNode(s, "node-1", "10.0.0.1")
 	payload := announcePayload(t, 9000, "webservers")
 	s.handleAnnounce("node-1", payload)
 	s.handleAnnounce("node-1", payload) // re-announce same node
