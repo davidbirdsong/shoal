@@ -66,9 +66,8 @@ func main() {
 	l := getLogger(nodeName).With().Logger()
 
 	go func() {
-		l.Warn().Msg("got signal shutting down")
-
 		<-sigs
+		l.Warn().Msg("got signal shutting down")
 		cancel()
 	}()
 

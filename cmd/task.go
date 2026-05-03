@@ -174,7 +174,6 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 		return nil, fmt.Errorf("start worker: %w", err)
 	}
 	bgTail()
-	defer worker.Wait()
 
 	logger.Info().Int("pid", worker.Process.Pid).Msg("worker started")
 
@@ -201,6 +200,7 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 	n, err := makeNewNode(nodeCfg, logger)
 	if err != nil {
 		worker.Process.Kill() //nolint:errcheck
+		worker.Wait()
 		return nil, fmt.Errorf("create node: %w", err)
 	}
 
@@ -208,6 +208,8 @@ func startTask(ctx context.Context, cfg startConfig) (*taskRunner, error) {
 		cluster.TagKeyRole:  cluster.RoleTask,
 		cluster.TagKeyState: cluster.StateReady,
 	}); err != nil {
+		worker.Process.Kill() //nolint:errcheck
+		worker.Wait()
 		return nil, fmt.Errorf("set tags ready: %w", err)
 	}
 
