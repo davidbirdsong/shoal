@@ -32,6 +32,10 @@ func (s *sidecar) drainByNode(nodeName string) {
 		s.logger.Debug().Str("nodeName", nodeName).Msg("leaving server not in registry")
 		return
 	}
+	if len(b.backend) == 0 {
+		return
+	}
+
 	logger := s.logger.With().Str("backend", b.backend).
 		Str("node_name", nodeName).Str("key", b.key).Logger()
 
@@ -113,14 +117,16 @@ func (s *sidecar) onMemberJoin(members []serf.Member) {
 			Str("addr", m.Addr.String()).
 			Msg("member join event all members run through")
 		if m.Status == serf.StatusAlive {
-			if m.Addr == nil {
-				l.Warn().Msg("refusing to add nil addr member")
+			if len(m.Addr) == 0 {
+				l.Warn().Msg("REFUSING to add nil addr member")
 				continue
 			}
-			s.nodes.add(m.Name, m)
-			if len(m.Addr.String()) == 0 {
-				l.Warn().Msg("member with empty addr string")
+			if m.Addr.IsUnspecified() {
+				l.Warn().Msg("REFUSING to add unspecified addr member")
+				continue
 			}
+
+			s.nodes.add(m.Name, m)
 		}
 	}
 }
