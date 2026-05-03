@@ -137,16 +137,12 @@ func TestRegistryAddRemove(t *testing.T) {
 			r := newRegistry()
 			b := r.add(tt.nodeName, tt.addr, tt.port, tt.backend)
 
-			require.NotEmpty(t, b.key)
 			assert.Equal(t, tt.addr, b.addr)
 			assert.Equal(t, tt.port, b.port)
 			assert.Equal(t, tt.backend, b.backend)
 
-			got, found := r.remove(tt.removeNode)
+			_, found := r.remove(tt.removeNode)
 			assert.Equal(t, tt.wantFound, found)
-			if tt.wantFound {
-				assert.Equal(t, b.key, got.key)
-			}
 
 			if tt.doubleRemove {
 				_, found2 := r.remove(tt.removeNode)
@@ -156,12 +152,6 @@ func TestRegistryAddRemove(t *testing.T) {
 	}
 }
 
-func TestRegistryKeysUnique(t *testing.T) {
-	r := newRegistry()
-	b1 := r.add("node-1", "10.0.0.1", 5001, "webservers")
-	b2 := r.add("node-2", "10.0.0.2", 5002, "webservers")
-	assert.NotEqual(t, b1.key, b2.key, "backend keys must be unique across nodes")
-}
 
 func TestRegistryConcurrent(t *testing.T) {
 	r := newRegistry()

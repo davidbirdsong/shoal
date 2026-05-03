@@ -36,10 +36,9 @@ func (s *sidecar) drainByNode(nodeName string) {
 		return
 	}
 
-	logger := s.logger.With().Str("backend", b.backend).
-		Str("node_name", nodeName).Str("key", b.key).Logger()
+	logger := s.logger.With().Str("backend", b.backend).Str("query_node", nodeName).Logger()
 
-	if err := s.haproxy.DrainServer(b.backend, b.key); err != nil {
+	if err := s.haproxy.DrainServer(b.backend, nodeName); err != nil {
 		logger.Warn().Err(err).Msg("failed to set drain")
 		return
 	}
@@ -53,8 +52,8 @@ func (s *sidecar) removeByNode(nodeName string) {
 	if !ok {
 		return
 	}
-	logger := s.logger.With().Str("backend", b.key).Str("node", nodeName).Logger()
-	if err := s.haproxy.RemoveServer(b.backend, b.key); err != nil {
+	logger := s.logger.With().Str("backend", b.backend).Str("query_node", nodeName).Logger()
+	if err := s.haproxy.RemoveServer(b.backend, nodeName); err != nil {
 		logger.Err(err).Msg("remove server failed")
 	} else {
 		logger.Info().Msg("removed backend")
@@ -90,7 +89,7 @@ func (s *sidecar) handleAnnounce(nodeName string, payload []byte) {
 	addr := m.Addr.String()
 	b := s.reg.add(nodeName, addr, req.Port, req.Backend)
 	bl := logger.With().Str("backend", b.backend).Str("addr", addr).Uint32("port", req.Port).Logger()
-	if err := s.haproxy.AddServer(b.backend, b.key, addr, req.Port); err != nil {
+	if err := s.haproxy.AddServer(b.backend, nodeName, addr, req.Port); err != nil {
 		bl.Err(err).Msg("announce: add server failed")
 	} else {
 		bl.Info().Msg("registered backend")

@@ -369,7 +369,7 @@ func runTask(cmd *cobra.Command, args []string) error {
 
 	var (
 		err error
-		sc  = startConfig{nodename: nodeNameGlobal}
+		sc  = startConfig{nodename: nodeNameGlobal, backend: taskBackend}
 	)
 
 	sc.taskArgs, err = child.ArgsFromCobra(cmd, args)

@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/hashicorp/serf/serf"
 )
@@ -14,27 +12,21 @@ type srvTarget struct {
 	addr    string
 	port    uint32
 	backend string
-	key     string
 }
 
 type registry struct {
 	mu       sync.Mutex
 	backends map[string]srvTarget
-	seq      atomic.Int64
 }
 
 func newRegistry() *registry {
 	return &registry{backends: make(map[string]srvTarget)}
 }
 
-func (r *registry) nextKey(b string) string {
-	return fmt.Sprintf("%s-%d", b, r.seq.Add(1))
-}
-
 func (r *registry) add(nodeName, addr string, port uint32, backend string) srvTarget {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	b := srvTarget{addr: addr, port: port, backend: backend, key: r.nextKey(backend)}
+	b := srvTarget{addr: addr, port: port, backend: backend}
 	r.backends[nodeName] = b
 	return b
 }
@@ -61,7 +53,6 @@ func (r *registry) remove(nodeName string) (srvTarget, bool) {
 type nodeCatalog struct {
 	mu    sync.Mutex
 	nodes map[string]serf.Member
-	seq   atomic.Int64
 }
 
 func newNodeCatalog() *nodeCatalog {
