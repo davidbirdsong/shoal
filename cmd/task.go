@@ -262,8 +262,9 @@ func (t *taskRunner) announce() {
 // solicited responds to a QuerySolicit from a sidecar with our current announce payload.
 func (t *taskRunner) solicited(q *serf.Query) error {
 	payload, err := shoalproto.MarshalAnnounceRequest(&shoalproto.AnnounceRequest{
-		Port:  uint32(t.port),
-		State: cluster.StateReady,
+		Port:    uint32(t.port),
+		State:   cluster.StateReady,
+		Backend: t.backend,
 	})
 	if err != nil {
 		return fmt.Errorf("solicit: marshal: %w", err)
